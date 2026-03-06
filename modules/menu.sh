@@ -226,6 +226,7 @@ menu() {
         echo -e "  ${green}37.${reset} $(msg menu_users)"
         echo -e "  ${green}38.${reset} $(msg menu_backup)"
         echo -e "  ${green}39.${reset} $(msg menu_cf_update_ip)"
+        echo -e "  ${green}40.${reset} $(msg menu_sub)"
         echo -e "  $(msg menu_sep_exit)"
         echo -e "  ${green}0.${reset}  $(msg menu_exit)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -242,6 +243,7 @@ menu() {
             8)  modifyDomain ;;
             9)  toggleCdnMode ;;
             39) setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
+            40) rebuildAllSubFiles ;;
             10) toggleWarpMode ;;
             11) addDomainToWarpProxy ;;
             12) deleteDomainFromWarpProxy ;;
@@ -257,7 +259,8 @@ menu() {
             22) tail -n 80 /var/log/nginx/error.log 2>/dev/null || echo "$(msg no_logs)" ;;
             23) clearLogs ;;
             24) systemctl restart xray xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
-                echo "${green}$(msg all_services_restarted)${reset}" ;;
+                echo "${green}$(msg all_services_restarted)${reset}"
+                rebuildAllSubFiles &>/dev/null || true ;;
             25) updateXrayCore ;;
             26) fullRemove ;;
             27) manageUFW ;;

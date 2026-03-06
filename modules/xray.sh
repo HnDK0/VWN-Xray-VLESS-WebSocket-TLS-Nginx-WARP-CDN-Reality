@@ -122,9 +122,8 @@ getShareUrl() {
 
 
 # ── SUBSCRIPTION ──────────────────────────────────────────────────
-# Файлы лежат в /usr/local/etc/xray/sub/<username>.txt
-# Nginx отдаёт их через location /sub/ (прописан в writeNginxConfig)
 # URL: https://<domain>/sub/<username>.txt
+# Nginx отдаёт через location /sub/ (прописан в writeNginxConfig)
 
 SUB_DIR="/usr/local/etc/xray/sub"
 
@@ -135,9 +134,11 @@ buildUserSubFile() {
     safe_label=$(echo "$label" | tr -cd 'A-Za-z0-9_-')
     mkdir -p "$SUB_DIR"
 
+    # Убеждаемся что nginx location /sub/ существует
+    applyNginxSub 2>/dev/null || true
+
     local lines=""
 
-    # XHTTP ссылка
     if [ -f "$configPath" ]; then
         local xp xd xep
         xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' "$configPath" 2>/dev/null)
@@ -148,7 +149,6 @@ buildUserSubFile() {
         lines+="vless://${uuid}@${xd}:443?encryption=none&security=tls&sni=${xd}&fp=chrome&type=xhttp&host=${xd}&path=${xep}#${label}"$'\n'
     fi
 
-    # Reality ссылка
     if [ -f "$realityConfigPath" ]; then
         local r_port r_shortId r_destHost r_pubKey r_serverIP
         r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
@@ -163,21 +163,22 @@ buildUserSubFile() {
     chmod 644 "${SUB_DIR}/${safe_label}.txt"
 }
 
-# Перестраивает файлы подписки для всех пользователей
+# Перестраивает файлы подписки для всех пользователей из users.conf
 rebuildAllSubFiles() {
     [ ! -f "$USERS_FILE" ] && return 0
+    applyNginxSub 2>/dev/null || true
     while IFS='|' read -r uuid label; do
         [ -z "$uuid" ] && continue
         buildUserSubFile "$uuid" "$label"
     done < "$USERS_FILE"
+    echo "${green}$(msg done)${reset}"
 }
 
 # Возвращает subscription URL для пользователя
 getSubUrl() {
     local label="$1"
-    local domain
+    local domain safe_label
     domain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
-    local safe_label
     safe_label=$(echo "$label" | tr -cd 'A-Za-z0-9_-')
     echo "https://${domain}/sub/${safe_label}.txt"
 }
