@@ -98,6 +98,8 @@ server {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
         proxy_connect_timeout 10s;
+        proxy_request_buffering off;
+        chunked_transfer_encoding on;
     }
 
     location / {

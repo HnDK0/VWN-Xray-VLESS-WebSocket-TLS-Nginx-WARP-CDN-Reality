@@ -35,7 +35,11 @@ writeXrayConfig() {
             "network": "xhttp",
             "xhttpSettings": {
                 "path": "$xhttpPath",
-                "host": "$domain"
+                "host": "$domain",
+                "mode": "stream-one",
+                "noSSEHeader": false,
+                "scMaxEachPostBytes": "1000000",
+                "scMinPostsIntervalMs": "30"
             }
         },
         "sniffing": {"enabled": false}
@@ -116,7 +120,7 @@ getShareUrl() {
     encoded_path=$(python3 -c \
         "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=''))" \
         "$xray_path" 2>/dev/null) || encoded_path=$(printf '%s' "$xray_path" | sed 's|/|%2F|g')
-    echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&alpn=h2%2Chttp%2F1.1&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
+    echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
 }
 
 getQrCode() {
