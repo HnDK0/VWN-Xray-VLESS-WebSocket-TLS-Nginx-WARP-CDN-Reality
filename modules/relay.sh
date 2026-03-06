@@ -51,6 +51,9 @@ parseRelayUrl() {
             local b64 json
             b64=$(echo "$url" | sed 's|vmess://||')
             json=$(echo "$b64" | base64 -d 2>/dev/null)
+            if [ -z "$json" ] || ! echo "$json" | python3 -c "import sys,json; json.load(sys.stdin)" &>/dev/null; then
+                echo "${red}$(msg relay_parse_fail) (invalid VMess base64)${reset}"; return 1
+            fi
             host=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('add',''))" 2>/dev/null)
             port=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('port',''))" 2>/dev/null)
             uuid=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)

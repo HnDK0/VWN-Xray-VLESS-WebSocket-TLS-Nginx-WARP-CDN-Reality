@@ -36,17 +36,51 @@ installWsTls() {
     prepareSoftwareWs
 
     echo -e "\n${green}--- $(msg install_version) ---${reset}"
-    read -rp "$(msg enter_domain_vpn)" userDomain
-    [ -z "$userDomain" ] && { echo "${red}$(msg domain_required)${reset}"; return 1; }
-    read -rp "$(msg enter_xray_port)" xrayPort
-    [ -z "$xrayPort" ] && xrayPort=16500
-    wsPath=$(generateRandomPath)
-    read -rp "$(msg enter_stub_url)" proxyUrl
-    [ -z "$proxyUrl" ] && proxyUrl='https://httpbin.org/'
+
+    # Домен
+    local userDomain validated_domain
+    while true; do
+        read -rp "$(msg enter_domain_vpn)" userDomain
+        userDomain=$(echo "$userDomain" | tr -d ' ')
+        if [ -z "$userDomain" ]; then
+            echo "${red}$(msg domain_required)${reset}"; continue
+        fi
+        if ! validated_domain=$(_validateDomain "$userDomain"); then
+            echo "${red}$(msg invalid): '$userDomain' — $(msg enter_domain)${reset}"; continue
+        fi
+        userDomain="$validated_domain"
+        break
+    done
+
+    # Порт Xray
+    local xrayPort
+    while true; do
+        read -rp "$(msg enter_xray_port)" xrayPort
+        [ -z "$xrayPort" ] && xrayPort=16500
+        if ! _validatePort "$xrayPort" &>/dev/null; then
+            echo "${red}$(msg invalid_port) (1024-65535)${reset}"; continue
+        fi
+        break
+    done
+
+    local xhttpPath
+    xhttpPath=$(generateRandomPath)
+
+    # URL заглушки
+    local proxyUrl validated_url
+    while true; do
+        read -rp "$(msg enter_stub_url)" proxyUrl
+        [ -z "$proxyUrl" ] && proxyUrl='https://httpbin.org/'
+        if ! validated_url=$(_validateUrl "$proxyUrl"); then
+            echo "${red}$(msg invalid) URL — https:// $(msg enter_stub_url)${reset}"; continue
+        fi
+        proxyUrl="$validated_url"
+        break
+    done
 
     echo -e "\n${green}---${reset}"
-    run_task "Создание конфига Xray"   "writeXrayConfig '$xrayPort' '$wsPath'"
-    run_task "Создание конфига Nginx"  "writeNginxConfig '$xrayPort' '$userDomain' '$proxyUrl' '$wsPath'"
+    run_task "Создание конфига Xray"   "writeXrayConfig '$xrayPort' '$xhttpPath' '$userDomain'"
+    run_task "Создание конфига Nginx"  "writeNginxConfig '$xrayPort' '$userDomain' '$proxyUrl' '$xhttpPath'"
     run_task "Настройка WARP"          configWarp
     run_task "Выпуск SSL"              "userDomain='$userDomain' configCert"
     run_task "Применение правил WARP"  applyWarpDomains
@@ -195,11 +229,12 @@ menu() {
             2)  getQrCode ;;
             3)  modifyXrayUUID ;;
             4)  modifyXrayPort ;;
-            5)  modifyWsPath ;;
+            5)  modifyXhttpPath ;;
             6)  modifyProxyPassUrl ;;
             7)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
             8)  modifyDomain ;;
             9)  toggleCdnMode ;;
+            39) setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
             10) toggleWarpMode ;;
             11) addDomainToWarpProxy ;;
             12) deleteDomainFromWarpProxy ;;
@@ -227,6 +262,9 @@ menu() {
             33) managePsiphon ;;
             34) manageTor ;;
             35) selectLang; _initLang ;;
+            36) manageDiag ;;
+            37) manageUsers ;;
+            38) manageBackup ;;
             0)  exit 0 ;;
             *)  echo -e "${red}$(msg invalid)${reset}"; sleep 1 ;;
         esac
