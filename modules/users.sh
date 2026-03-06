@@ -177,7 +177,7 @@ showUserQR() {
         [ -z "$xray_userDomain" ] || [ "$xray_userDomain" = "null" ] && \
             xray_userDomain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
         encoded_path=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xray_path" 2>/dev/null)
-        local url_xhttp="vless://${uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${label}"
+        local url_xhttp="vless://${uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&alpn=h2%2Chttp%2F1.1&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${label}"
         echo -e "${cyan}=== XHTTP+TLS: $label ===${reset}"
         qrencode -t ANSI "$url_xhttp" 2>/dev/null || true
         echo -e "\n${green}$url_xhttp${reset}\n"
