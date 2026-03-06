@@ -3,7 +3,7 @@
 
 # VWN — Xray VLESS + WARP + CDN + Reality
 
-Automated installer for Xray VLESS with WebSocket+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon, and Tor support.
+Automated installer for Xray VLESS with XHTTP+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon, and Tor support.
 
 ## Quick Install
 
@@ -25,12 +25,12 @@ vwn update
 
 - Ubuntu 22.04+ / Debian 11+
 - Root access
-- A domain pointed at the server (for WS+TLS)
+- A domain pointed at the server (for XHTTP+TLS)
 - For Reality — only the server IP is needed, no domain required
 
 ## Features
 
-- ✅ **VLESS + WebSocket + TLS** — connections via Cloudflare CDN
+- ✅ **VLESS + XHTTP + TLS** — connections via Cloudflare CDN
 - ✅ **VLESS + Reality** — direct connections without CDN (router, Clash)
 - ✅ **Nginx** — reverse proxy with a stub/decoy site
 - ✅ **Cloudflare WARP** — route selected domains or all traffic
@@ -38,6 +38,9 @@ vwn update
 - ✅ **Tor** — censorship bypass with exit country selection, bridge support (obfs4, snowflake, meek)
 - ✅ **Relay** — external outbound (VLESS/VMess/Trojan/SOCKS via link)
 - ✅ **CDN protection** — blocks direct access, only via Cloudflare
+- ✅ **Multi-user** — multiple UUIDs with labels, individual QR codes
+- ✅ **Backup & Restore** — manual backup/restore of all configs
+- ✅ **Diagnostics** — full system check with per-component breakdown
 - ✅ **WARP Watchdog** — auto-reconnect WARP on failure
 - ✅ **Fail2Ban + Web-Jail** — brute-force and scanner protection
 - ✅ **BBR** — TCP acceleration
@@ -50,7 +53,7 @@ vwn update
 
 ```
 Client (CDN/mobile)
-    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+WS → Xray → outbound
+    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+XHTTP → Xray → outbound
 
 Client (router/Clash/direct)
     └── IP:8443/TCP → VLESS+Reality → Xray → outbound
@@ -69,12 +72,23 @@ outbound (by routing rules):
 | Port  | Purpose                           |
 |-------|-----------------------------------|
 | 22    | SSH (configurable)                |
-| 443   | VLESS+WS+TLS via Nginx            |
+| 443   | VLESS+XHTTP+TLS via Nginx         |
 | 8443  | VLESS+Reality (default)           |
 | 40000 | WARP SOCKS5 (warp-cli, local)     |
 | 40002 | Psiphon SOCKS5 (local)            |
 | 40003 | Tor SOCKS5 (local)                |
 | 40004 | Tor Control Port (local)          |
+
+## CLI Commands
+
+```bash
+vwn                # Open interactive menu
+vwn update         # Update modules (no config changes)
+vwn status         # Run full diagnostics (no menu)
+vwn backup         # Create backup immediately
+vwn restore        # Restore from backup (interactive)
+vwn qr             # Show QR codes (no menu)
+```
 
 ## Menu
 
@@ -87,211 +101,187 @@ outbound (by routing rules):
   WebJail: NO  |  CDN: OFF  |  Reality: ON (port 8443)
   Relay: ON | Split  |  Psiphon: ON | Split, DE  |  Tor: ON | Split, US
 ----------------------------------------------------------------
-    1.  Install Xray (VLESS+WS+TLS+WARP+CDN)
+    1.  Install Xray (VLESS+XHTTP+TLS+WARP+CDN)
     2.  Show QR code and link
     3.  Change UUID
-    ─── Configuration ───────────────────
+    --- Configuration ---
     4.  Change Xray port
-    5.  Change WebSocket path
+    5.  Change XHTTP path
     6.  Change stub site
     7.  Reissue SSL certificate
     8.  Change domain
-    ─── CDN & WARP ──────────────────────
+    --- CDN & WARP ---
     9.  Toggle CDN mode (ON/OFF)
     10. Toggle WARP mode (Global/Split/OFF)
     11. Add domain to WARP
     12. Remove domain from WARP
     13. Edit WARP list (Nano)
     14. Check IP (Real vs WARP)
-    ─── Security ────────────────────────
+    --- Security ---
     15. Enable BBR
     16. Enable Fail2Ban
     17. Enable Web-Jail
     18. Change SSH port
     30. Install WARP Watchdog
-    ─── Logs ────────────────────────────
+    --- Logs ---
     19. Xray logs (access)
     20. Xray logs (error)
     21. Nginx logs (access)
     22. Nginx logs (error)
     23. Clear all logs
-    ─── Services ────────────────────────
+    --- Services ---
     24. Restart all services
     25. Update Xray-core
     26. Full removal
-    ─── UFW, SSL, Logs ──────────────────
+    --- UFW, SSL, Logs ---
     27. Manage UFW
     28. Manage SSL auto-renewal
     29. Manage log auto-clear
-    ─── Tunnels ─────────────────────────
+    --- Tunnels ---
     31. Manage VLESS + Reality
     32. Manage Relay (external)
     33. Manage Psiphon
     34. Manage Tor
-    35. Change language / Сменить язык
-    ─── Exit ────────────────────────────
+    35. Change language
+    --- Tools ---
+    36. Diagnostics
+    37. Manage users
+    38. Backup & Restore
+    39. Update Cloudflare IPs
+    --- Exit ---
     0.  Exit
-----------------------------------------------------------------
 ```
 
 ### Status indicators
 
-Each tunnel shows its current routing mode in the header:
-
 | Status | Meaning |
 |--------|---------|
-| `ACTIVE \| Global` | All traffic routed through tunnel |
-| `ACTIVE \| Split` | Only domains from the list |
-| `ACTIVE \| route OFF` | Service running but not in routing |
+| `ACTIVE | Global` | All traffic routed through tunnel |
+| `ACTIVE | Split` | Only domains from the list |
+| `ACTIVE | route OFF` | Service running but not in routing |
 | `OFF` | Service not running |
 
-## Tunnels (items 31–34)
+## Multi-user (item 37)
 
-All tunnels work the same way:
-- **Global** — all traffic through the tunnel
-- **Split** — only domains from the list
-- **OFF** — removed from Xray routing (service stays running)
-- Applied simultaneously to both configs (WS and Reality)
+Multiple VLESS UUIDs with labels (e.g. "iPhone Vasya", "Laptop work").
 
-### VLESS + Reality (item 31)
+- Each user gets their own UUID; changes apply to both XHTTP and Reality configs instantly
+- Add / Remove / Rename users
+- Individual QR code per user (XHTTP and Reality links)
+- Cannot delete the last user
+- Users stored in `/usr/local/etc/xray/users.conf`
 
-Direct connections without CDN. Runs as a separate `xray-reality` service.
+On first open, the existing UUID is automatically imported as user `default`.
 
-```
-vless://UUID@IP:8443?security=reality&sni=microsoft.com&fp=chrome&pbk=KEY&sid=SID&type=tcp&flow=xtls-rprx-vision
-```
+## Backup & Restore (item 38)
 
-### Relay — external server (item 32)
+Manual backup of all configs, certificates, cron tasks, fail2ban rules.
 
-Route traffic through an external server. Supports link formats:
-```
-vless://...  vmess://...  trojan://...  socks5://...
-```
+Backups stored in `/root/vwn-backups/` with timestamps. No auto-deletion.
 
-Modes: **Global / Split / OFF**. Switch via item 2 in submenu.
-
-### Psiphon (item 33)
-
-Censorship bypass with exit country selection (DE, NL, US, GB, FR, AT, CA, SE, etc.).
-
-Modes: **Global / Split / OFF**. Switch via item 2 in submenu.
-
-### Tor (item 34)
-
-Censorship bypass with exit country via `ExitNodes`.
-
-Modes: **Global / Split / OFF**. Switch via item 2 in submenu.
-
-**Additional:**
-- **Renew circuit** — request new IP without restarting Tor
-- **Bridges** — obfs4, snowflake, meek-azure support for bypassing Tor blocks
-- IP check with exit country detection
-
-**Tip:** Use Split mode — Tor is slower than regular internet.
-
-## WARP (items 10–14)
-
-**Split mode** (default) — only selected domains via WARP:
-```
-openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com
+```bash
+vwn backup    # Quick backup from CLI
+vwn restore   # Interactive restore from CLI
 ```
 
-**Global mode** — all traffic via WARP.
+What is backed up: Xray configs, Nginx + SSL certs, Cloudflare API key, cron tasks, Fail2Ban rules.
 
-**OFF** — WARP removed from Xray routing.
+## Diagnostics (item 36)
 
-**WARP Watchdog (item 30)** — cron every 2 minutes, auto-reconnect on failure.
+```bash
+vwn status    # Full diagnostics from CLI
+```
+
+Full scan or per-component check via submenu:
+
+| Section | Checks |
+|---------|--------|
+| System | RAM, disk, swap, clock sync |
+| Xray | Config validity, service status, ports |
+| Nginx | Config, service, port 443, SSL expiry, DNS |
+| WARP | warp-svc, connection, SOCKS5 response |
+| Tunnels | Psiphon / Tor / Relay status |
+| Connectivity | Internet, domain reachability |
+
+Output: `✓` / `✗` per check, summary of issues at the end.
+
+## WS → XHTTP Migration
+
+If you have an existing WebSocket installation, run once:
+
+```bash
+bash migrate.sh
+```
+
+Creates a backup, converts config, removes WS headers from Nginx, tests, restarts. Auto-rollback on failure. Update clients to `type=xhttp` after migration.
 
 ## SSL Certificates
 
-**Method 1 — Cloudflare DNS API** (recommended): port 80 not needed, requires Email and Global API Key.
+**Method 1 — Cloudflare DNS API** (recommended): port 80 not needed.  
+**Method 2 — Standalone**: temporarily opens port 80.
 
-**Method 2 — Standalone**: temporarily opens port 80, no API keys needed.
-
-Auto-renewal via `/etc/cron.d/acme-renew` — every 35 days at 03:00.
+Auto-renewal via cron every 35 days at 03:00.
 
 ## CDN Mode (item 9)
 
-Downloads current Cloudflare IPs, blocks direct server access (`return 444`), only Cloudflare Proxy allowed. Enable only after setting up domain with orange cloud in Cloudflare.
+Blocks direct server access, only Cloudflare Proxy allowed. Enable after setting up orange cloud in Cloudflare. Use item 39 to refresh the IP list manually.
 
 ## File Structure
 
 ```
-/usr/local/lib/vwn/          # Modules
-├── lang.sh                  # Localisation (RU/EN)
-├── core.sh                  # Variables, utilities, status
-├── xray.sh                  # Xray WS+TLS config
-├── nginx.sh                 # Nginx, CDN, SSL
-├── warp.sh                  # WARP management
-├── reality.sh               # VLESS+Reality
-├── relay.sh                 # External outbound
-├── psiphon.sh               # Psiphon tunnel
-├── tor.sh                   # Tor tunnel
-├── security.sh              # UFW, BBR, Fail2Ban, SSH
-├── logs.sh                  # Logs, logrotate, cron
-└── menu.sh                  # Main menu
+/usr/local/lib/vwn/
+├── lang.sh       # Localisation (RU/EN)
+├── core.sh       # Variables, utilities, status
+├── xray.sh       # Xray XHTTP+TLS config
+├── nginx.sh      # Nginx, CDN, SSL
+├── warp.sh       # WARP management
+├── reality.sh    # VLESS+Reality
+├── relay.sh      # External outbound
+├── psiphon.sh    # Psiphon tunnel
+├── tor.sh        # Tor tunnel
+├── security.sh   # UFW, BBR, Fail2Ban, SSH
+├── logs.sh       # Logs, logrotate, cron
+├── backup.sh     # Backup & Restore
+├── users.sh      # Multi-user management
+├── diag.sh       # Diagnostics
+└── menu.sh       # Main menu
 
 /usr/local/etc/xray/
-├── config.json              # VLESS+WS config
+├── config.json              # VLESS+XHTTP config
 ├── reality.json             # VLESS+Reality config
 ├── reality_client.txt       # Reality client params
-├── vwn.conf                 # VWN settings (language etc.)
-├── warp_domains.txt         # WARP split domains
-├── psiphon.json             # Psiphon config
-├── psiphon_domains.txt      # Psiphon split domains
-├── tor_domains.txt          # Tor split domains
-├── relay.conf               # Relay config
-└── relay_domains.txt        # Relay split domains
+├── vwn.conf                 # VWN settings
+├── users.conf               # User list (UUID|label)
+├── warp_domains.txt
+├── psiphon.json
+├── psiphon_domains.txt
+├── tor_domains.txt
+├── relay.conf
+└── relay_domains.txt
 
-/etc/systemd/system/
-├── xray.service             # VLESS+WS
-├── xray-reality.service     # Reality
-└── psiphon.service          # Psiphon
-
-/etc/cron.d/
-├── acme-renew               # SSL auto-renewal
-├── clear-logs               # Log auto-clear
-└── warp-watchdog            # WARP monitoring
-
-/etc/sysctl.d/
-└── 99-xray.conf             # Anti-ping, IPv6 off, somaxconn
+/root/vwn-backups/
+└── vwn-backup-YYYY-MM-DD_HH-MM-SS.tar.gz
 ```
 
 ## Troubleshooting
 
-### WARP won't connect
 ```bash
-systemctl restart warp-svc
-sleep 5
-warp-cli --accept-tos connect
-```
+# Something not working
+vwn status
 
-### Psiphon won't connect
-```bash
+# WARP won't connect
+systemctl restart warp-svc && sleep 5 && warp-cli --accept-tos connect
+
+# Psiphon logs
 tail -50 /var/log/psiphon/psiphon.log
-```
 
-### Reality won't start
-```bash
-systemctl status xray-reality
+# Reality won't start
 xray -test -config /usr/local/etc/xray/reality.json
-```
 
-### Nginx won't start after IPv6 disable
-```bash
-sed -i '/listen \[::\]:443/d' /etc/nginx/conf.d/xray.conf
-nginx -t && systemctl reload nginx
-```
+# Nginx after IPv6 disable
+sed -i '/listen \[::\]:443/d' /etc/nginx/conf.d/xray.conf && nginx -t && systemctl reload nginx
 
-### SSL expired
-```bash
-vwn  # Item 7 or item 28
-```
-
-### Tor won't connect
-```bash
-# Try bridges (item 34 → 11)
-systemctl status tor
+# Tor — try bridges (item 34 → 11)
 tail -50 /var/log/tor/notices.log
 ```
 
@@ -301,7 +291,7 @@ tail -50 /var/log/tor/notices.log
 vwn  # Item 26
 ```
 
-Removes: Xray, Nginx, WARP, Psiphon, Tor, all configs, services, cron tasks, sysctl settings.
+Note: backups in `/root/vwn-backups/` are not removed automatically.
 
 ## Dependencies
 
@@ -324,7 +314,7 @@ MIT License
 
 # VWN — Xray VLESS + WARP + CDN + Reality
 
-Автоматический установщик Xray VLESS с поддержкой WebSocket+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon и Tor.
+Автоматический установщик Xray VLESS с поддержкой XHTTP+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon и Tor.
 
 ## Быстрая установка
 
@@ -346,12 +336,12 @@ vwn update
 
 - Ubuntu 22.04+ / Debian 11+
 - Root доступ
-- Домен, направленный на сервер (для WS+TLS)
+- Домен, направленный на сервер (для XHTTP+TLS)
 - Для Reality — только IP сервера, домен не нужен
 
 ## Особенности
 
-- ✅ **VLESS + WebSocket + TLS** — подключения через Cloudflare CDN
+- ✅ **VLESS + XHTTP + TLS** — подключения через Cloudflare CDN
 - ✅ **VLESS + Reality** — прямые подключения без CDN (роутер, Clash)
 - ✅ **Nginx** — reverse proxy с сайтом-заглушкой
 - ✅ **Cloudflare WARP** — роутинг выбранных доменов или всего трафика
@@ -359,6 +349,9 @@ vwn update
 - ✅ **Tor** — обход блокировок с выбором страны выхода, поддержка мостов (obfs4, snowflake, meek)
 - ✅ **Relay** — внешний outbound (VLESS/VMess/Trojan/SOCKS по ссылке)
 - ✅ **CDN защита** — блокировка прямого доступа, только через Cloudflare
+- ✅ **Мульти-пользователи** — несколько UUID с метками, индивидуальные QR коды
+- ✅ **Бэкап и восстановление** — ручной бэкап/восстановление всех конфигов
+- ✅ **Диагностика** — полная проверка системы с детализацией по компонентам
 - ✅ **WARP Watchdog** — автовосстановление WARP при обрыве
 - ✅ **Fail2Ban + Web-Jail** — защита от брутфорса и сканеров
 - ✅ **BBR** — ускорение TCP
@@ -371,7 +364,7 @@ vwn update
 
 ```
 Клиент (CDN/мобильный)
-    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+WS → Xray → outbound
+    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+XHTTP → Xray → outbound
 
 Клиент (роутер/Clash/прямое)
     └── IP:8443/TCP → VLESS+Reality → Xray → outbound
@@ -390,12 +383,23 @@ outbound (по routing rules):
 | Порт  | Назначение                        |
 |-------|-----------------------------------|
 | 22    | SSH (изменяемый)                  |
-| 443   | VLESS+WS+TLS через Nginx          |
+| 443   | VLESS+XHTTP+TLS через Nginx       |
 | 8443  | VLESS+Reality (по умолчанию)      |
 | 40000 | WARP SOCKS5 (warp-cli, локальный) |
 | 40002 | Psiphon SOCKS5 (локальный)        |
 | 40003 | Tor SOCKS5 (локальный)            |
 | 40004 | Tor Control Port (локальный)      |
+
+## CLI команды
+
+```bash
+vwn                # Открыть интерактивное меню
+vwn update         # Обновить модули (без изменения конфигов)
+vwn status         # Полная диагностика (без меню)
+vwn backup         # Создать бэкап немедленно
+vwn restore        # Восстановить из бэкапа (интерактивно)
+vwn qr             # Показать QR коды (без меню)
+```
 
 ## Меню управления
 
@@ -408,211 +412,212 @@ outbound (по routing rules):
   WebJail: NO  |  CDN: OFF  |  Reality: ON (порт 8443)
   Relay: ON | Split  |  Psiphon: ON | Split, DE  |  Tor: ON | Split, US
 ----------------------------------------------------------------
-    1.  Установить Xray (VLESS+WS+TLS+WARP+CDN)
+    1.  Установить Xray (VLESS+XHTTP+TLS+WARP+CDN)
     2.  Показать QR-код и ссылку
     3.  Сменить UUID
-    ─────────────── Конфигурация ─────────────
+    --- Конфигурация ---
     4.  Изменить порт Xray
-    5.  Изменить путь WebSocket
+    5.  Изменить путь XHTTP
     6.  Изменить сайт-заглушку
     7.  Перевыпустить SSL сертификат
     8.  Сменить домен
-    ─────────────── CDN и WARP ───────────────
+    --- CDN и WARP ---
     9.  Переключить CDN режим (ON/OFF)
     10. Переключить режим WARP (Global/Split/OFF)
     11. Добавить домен в WARP
     12. Удалить домен из WARP
     13. Редактировать список WARP (Nano)
     14. Проверить IP (Real vs WARP)
-    ─────────────── Безопасность ─────────────
+    --- Безопасность ---
     15. Включить BBR
     16. Включить Fail2Ban
     17. Включить Web-Jail
     18. Сменить SSH порт
     30. Установить WARP Watchdog
-    ─────────────── Логи ─────────────────────
+    --- Логи ---
     19. Логи Xray (access)
     20. Логи Xray (error)
     21. Логи Nginx (access)
     22. Логи Nginx (error)
     23. Очистить все логи
-    ─────────────── Сервисы ──────────────────
+    --- Сервисы ---
     24. Перезапустить все сервисы
     25. Обновить Xray-core
     26. Полное удаление
-    ─────────────── UFW, SSL, Logs ───────────
+    --- UFW, SSL, Logs ---
     27. Управление UFW
     28. Управление автообновлением SSL
     29. Управление автоочисткой логов
-    ─────────────── Туннели ──────────────────
+    --- Туннели ---
     31. Управление VLESS + Reality
     32. Управление Relay (внешний сервер)
     33. Управление Psiphon
     34. Управление Tor
     35. Сменить язык / Change language
-    ─────────────── Выход ────────────────────
+    --- Инструменты ---
+    36. Диагностика
+    37. Управление пользователями
+    38. Бэкап и восстановление
+    39. Обновить IP Cloudflare
+    --- Выход ---
     0.  Выйти
-----------------------------------------------------------------
 ```
 
 ### Статусы в заголовке
 
-Каждый туннель показывает текущий режим маршрутизации прямо в шапке:
-
 | Статус | Описание |
 |--------|----------|
-| `ACTIVE \| Global` | Весь трафик идёт через туннель |
-| `ACTIVE \| Split` | Только домены из списка |
-| `ACTIVE \| маршрут OFF` | Сервис запущен, но не в роутинге |
+| `ACTIVE | Global` | Весь трафик идёт через туннель |
+| `ACTIVE | Split` | Только домены из списка |
+| `ACTIVE | маршрут OFF` | Сервис запущен, но не в роутинге |
 | `OFF` | Сервис не запущен |
 
 ## Туннели (пункты 31–34)
 
-Все туннели работают по одинаковой схеме:
-- **Global** — весь трафик через туннель
-- **Split** — только домены из списка
-- **OFF** — туннель отключён от роутинга Xray (сервис остаётся запущенным)
-- Применяются одновременно к обоим конфигам (WS и Reality)
+Все туннели: **Global / Split / OFF**. Применяются к обоим конфигам (XHTTP и Reality).
 
 ### VLESS + Reality (пункт 31)
 
-Прямые подключения без CDN. Работает как отдельный сервис `xray-reality`.
+Прямые подключения без CDN. Отдельный сервис `xray-reality`.
 
 ```
 vless://UUID@IP:8443?security=reality&sni=microsoft.com&fp=chrome&pbk=KEY&sid=SID&type=tcp&flow=xtls-rprx-vision
 ```
 
-### Relay — внешний сервер (пункт 32)
+### Relay (пункт 32)
 
-Перенаправление трафика через внешний сервер. Поддерживает ссылки:
-```
-vless://...  vmess://...  trojan://...  socks5://...
-```
-
-Режимы: **Global / Split / OFF**. Переключение — пункт 2 в подменю.
+Поддерживает: `vless://` `vmess://` `trojan://` `socks5://`
 
 ### Psiphon (пункт 33)
 
-Обход блокировок с выбором страны выхода (DE, NL, US, GB, FR, AT, CA, SE и др.).
-
-Режимы: **Global / Split / OFF**. Переключение — пункт 2 в подменю.
+Выбор страны выхода: DE, NL, US, GB, FR, AT, CA, SE и др.
 
 ### Tor (пункт 34)
 
-Обход блокировок с выбором страны выхода через `ExitNodes`.
-
-Режимы: **Global / Split / OFF**. Переключение — пункт 2 в подменю.
-
-**Дополнительно:**
-- **Обновить цепь** — запросить новый IP без перезапуска Tor
-- **Мосты (Bridges)** — obfs4, snowflake, meek-azure для обхода блокировки самого Tor
-- Проверка IP с определением страны выхода
-
-**Рекомендация:** использовать Split режим — Tor медленнее обычного интернета.
+Выбор страны выхода через `ExitNodes`. Поддержка мостов: obfs4, snowflake, meek-azure. **Рекомендуется Split режим** — Tor медленнее обычного интернета.
 
 ## WARP (пункты 10–14)
 
-**Split режим** (по умолчанию) — только выбранные домены через WARP:
+**Split** (по умолчанию): `openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com`
+
+**Global** — весь трафик через WARP. **OFF** — отключён от роутинга.
+
+**WARP Watchdog (пункт 30)** — cron каждые 2 минуты, автопереподключение.
+
+## Мульти-пользователи (пункт 37)
+
+Несколько VLESS UUID с произвольными метками ("iPhone Vasya", "Ноутбук работа").
+
+- Добавить / Удалить / Переименовать / QR для каждого
+- Изменения мгновенно применяются к обоим конфигам
+- Последнего пользователя удалить нельзя
+- Хранится в `/usr/local/etc/xray/users.conf`
+
+При первом открытии существующий UUID импортируется как `default`.
+
+## Бэкап и восстановление (пункт 38)
+
+Бэкапы в `/root/vwn-backups/` с датой и временем. Автоудаления нет.
+
+```bash
+vwn backup    # Быстрый бэкап из CLI
+vwn restore   # Интерактивное восстановление
 ```
-openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com
+
+Включает: конфиги Xray, Nginx + SSL, API ключи Cloudflare, cron, Fail2Ban.
+
+## Диагностика (пункт 36)
+
+```bash
+vwn status    # Полная диагностика из CLI
 ```
 
-**Global режим** — весь трафик через WARP.
+| Раздел | Проверки |
+|--------|----------|
+| Система | RAM, диск, swap, часы |
+| Xray | Конфиги, сервисы, порты |
+| Nginx | Конфиг, сервис, SSL, DNS |
+| WARP | warp-svc, подключение, SOCKS5 |
+| Туннели | Psiphon / Tor / Relay |
+| Связность | Интернет, домен |
 
-**OFF** — WARP отключён от роутинга Xray.
+Вывод: `✓` / `✗` по каждой проверке + итоговый список проблем.
 
-**WARP Watchdog (пункт 30)** — cron каждые 2 минуты, автопереподключение при обрыве.
+## Миграция WS → XHTTP
+
+```bash
+bash migrate.sh
+```
+
+Автобэкап → конвертация конфига → обновление Nginx → перезапуск. Автооткат при ошибке. После миграции обновите клиенты на `type=xhttp`.
 
 ## SSL сертификаты
 
-**Метод 1 — Cloudflare DNS API** (рекомендуется): порт 80 не нужен, требуются Email и Global API Key.
+**Метод 1 — Cloudflare DNS API** (рекомендуется): порт 80 не нужен.  
+**Метод 2 — Standalone**: временно открывает порт 80.
 
-**Метод 2 — Standalone**: временно открывает порт 80, API ключи не нужны.
-
-Автообновление через `/etc/cron.d/acme-renew` — раз в 35 дней в 3:00.
+Автообновление через cron раз в 35 дней в 3:00.
 
 ## CDN режим (пункт 9)
 
-При включении скачиваются актуальные IP Cloudflare, прямой доступ блокируется (`return 444`), доступ только через Cloudflare Proxy. Включайте только после настройки домена с оранжевым облаком.
+Блокирует прямой доступ, только через Cloudflare Proxy. Включайте после настройки оранжевого облака. Пункт 39 — обновить список IP вручную.
 
 ## Структура файлов
 
 ```
-/usr/local/lib/vwn/          # Модули
-├── lang.sh                  # Локализация (RU/EN)
-├── core.sh                  # Переменные, утилиты, статусы
-├── xray.sh                  # Xray WS+TLS конфиг
-├── nginx.sh                 # Nginx, CDN, SSL
-├── warp.sh                  # WARP управление
-├── reality.sh               # VLESS+Reality
-├── relay.sh                 # Внешний outbound
-├── psiphon.sh               # Psiphon туннель
-├── tor.sh                   # Tor туннель
-├── security.sh              # UFW, BBR, Fail2Ban, SSH
-├── logs.sh                  # Логи, logrotate, cron
-└── menu.sh                  # Главное меню
+/usr/local/lib/vwn/
+├── lang.sh       # Локализация (RU/EN)
+├── core.sh       # Переменные, утилиты, статусы
+├── xray.sh       # Xray XHTTP+TLS конфиг
+├── nginx.sh      # Nginx, CDN, SSL
+├── warp.sh       # WARP управление
+├── reality.sh    # VLESS+Reality
+├── relay.sh      # Внешний outbound
+├── psiphon.sh    # Psiphon туннель
+├── tor.sh        # Tor туннель
+├── security.sh   # UFW, BBR, Fail2Ban, SSH
+├── logs.sh       # Логи, logrotate, cron
+├── backup.sh     # Бэкап и восстановление
+├── users.sh      # Управление пользователями
+├── diag.sh       # Диагностика
+└── menu.sh       # Главное меню
 
 /usr/local/etc/xray/
-├── config.json              # Конфиг VLESS+WS
+├── config.json              # Конфиг VLESS+XHTTP
 ├── reality.json             # Конфиг VLESS+Reality
 ├── reality_client.txt       # Параметры клиента Reality
-├── vwn.conf                 # Настройки VWN (язык и др.)
-├── warp_domains.txt         # Домены для WARP split
-├── psiphon.json             # Конфиг Psiphon
-├── psiphon_domains.txt      # Домены для Psiphon split
-├── tor_domains.txt          # Домены для Tor split
-├── relay.conf               # Конфиг Relay
-└── relay_domains.txt        # Домены для Relay split
+├── vwn.conf                 # Настройки VWN
+├── users.conf               # Список пользователей (UUID|метка)
+├── warp_domains.txt
+├── psiphon.json
+├── psiphon_domains.txt
+├── tor_domains.txt
+├── relay.conf
+└── relay_domains.txt
 
-/etc/systemd/system/
-├── xray.service             # VLESS+WS
-├── xray-reality.service     # Reality
-└── psiphon.service          # Psiphon
-
-/etc/cron.d/
-├── acme-renew               # Автообновление SSL
-├── clear-logs               # Автоочистка логов
-└── warp-watchdog            # Мониторинг WARP
-
-/etc/sysctl.d/
-└── 99-xray.conf             # Anti-ping, IPv6 off, somaxconn
+/root/vwn-backups/
+└── vwn-backup-YYYY-MM-DD_HH-MM-SS.tar.gz
 ```
 
 ## Решение проблем
 
-### WARP не подключается
 ```bash
-systemctl restart warp-svc
-sleep 5
-warp-cli --accept-tos connect
-```
+# Что-то не работает
+vwn status
 
-### Psiphon не подключается
-```bash
+# WARP не подключается
+systemctl restart warp-svc && sleep 5 && warp-cli --accept-tos connect
+
+# Логи Psiphon
 tail -50 /var/log/psiphon/psiphon.log
-```
 
-### Reality не запускается
-```bash
-systemctl status xray-reality
+# Reality не запускается
 xray -test -config /usr/local/etc/xray/reality.json
-```
 
-### Nginx не запускается после отключения IPv6
-```bash
-sed -i '/listen \[::\]:443/d' /etc/nginx/conf.d/xray.conf
-nginx -t && systemctl reload nginx
-```
+# Nginx после отключения IPv6
+sed -i '/listen \[::\]:443/d' /etc/nginx/conf.d/xray.conf && nginx -t && systemctl reload nginx
 
-### SSL истёк
-```bash
-vwn  # Пункт 7 или пункт 28
-```
-
-### Tor не подключается
-```bash
-# Попробовать мосты (пункт 34 → 11)
-systemctl status tor
+# Tor — попробовать мосты (пункт 34 → 11)
 tail -50 /var/log/tor/notices.log
 ```
 
@@ -622,7 +627,7 @@ tail -50 /var/log/tor/notices.log
 vwn  # Пункт 26
 ```
 
-Удаляет: Xray, Nginx, WARP, Psiphon, Tor, все конфиги, сервисы, cron задачи, sysctl настройки.
+Бэкапы в `/root/vwn-backups/` автоматически не удаляются.
 
 ## Зависимости
 
@@ -636,4 +641,3 @@ vwn  # Пункт 26
 
 MIT License
 </details>
-

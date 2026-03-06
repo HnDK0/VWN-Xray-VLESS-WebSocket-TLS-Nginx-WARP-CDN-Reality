@@ -18,7 +18,7 @@ green=$(tput setaf 2 && tput bold 2>/dev/null || echo "")
 cyan=$(tput setaf 6 && tput bold 2>/dev/null || echo "")
 reset=$(tput sgr0 2>/dev/null || echo "")
 
-MODULES="lang core xray nginx warp reality relay psiphon tor security logs menu"
+MODULES="lang core xray nginx warp reality relay psiphon tor security logs backup users diag menu"
 UPDATE_ONLY=false
 
 # Fallback msg() — works BEFORE lang.sh is loaded.

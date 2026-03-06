@@ -23,10 +23,42 @@ case "${1:-}" in
         bash <(curl -fsSL https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh) --update
         exit 0
         ;;
+    "status")
+        for module in lang core xray nginx warp reality relay psiphon tor security logs backup users diag menu; do
+            [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh"
+        done
+        _initLang
+        runFullDiag
+        exit 0
+        ;;
+    "backup")
+        for module in lang core xray nginx warp reality relay psiphon tor security logs backup users diag menu; do
+            [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh"
+        done
+        _initLang
+        createBackup
+        exit 0
+        ;;
+    "restore")
+        for module in lang core xray nginx warp reality relay psiphon tor security logs backup users diag menu; do
+            [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh"
+        done
+        _initLang
+        restoreBackup
+        exit 0
+        ;;
+    "qr")
+        for module in lang core xray nginx warp reality relay psiphon tor security logs backup users diag menu; do
+            [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh"
+        done
+        _initLang
+        getQrCode
+        exit 0
+        ;;
 esac
 
 # Загружаем модули
-for module in lang core xray nginx warp reality relay psiphon tor security logs menu; do
+for module in lang core xray nginx warp reality relay psiphon tor security logs backup users diag menu; do
     if [ -f "$VWN_LIB/${module}.sh" ]; then
         # shellcheck source=/dev/null
         source "$VWN_LIB/${module}.sh"
