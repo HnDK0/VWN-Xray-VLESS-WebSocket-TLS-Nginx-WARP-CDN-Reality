@@ -252,21 +252,30 @@ menu() {
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
         s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
-        # Обрезаем длинные значения
-        [ ${#s_connect} -gt 30 ] && s_connect="${s_connect:0:27}..."
-        [ ${#s_warp} -gt 22 ] && s_warp="${s_warp:0:19}..."
+        [ ${#s_connect} -gt 35 ] && s_connect="${s_connect:0:32}..."
+        # Чистые версии (без ANSI) для printf %-Ns выравнивания
+        _strip() { printf '%s' "$1" | sed 's/\[[0-9;]*[mABCDJKHf]//g; s/(B//g'; }
+        _pval() {
+            local val="$1" w="$2" clean
+            clean=$(_strip "$val")
+            printf "%s%*s" "$val" $((w - ${#clean})) ""
+        }
+        s_ws_c=$(_pval "$s_ws" 16)
+        s_reality_c=$(_pval "$s_reality" 16)
+        s_nginx_c=$(_pval "$s_nginx" 16)
 
         echo -e "${cyan}================================================================${reset}"
         printf "   ${red}VWN — VLESS + WARP + REALITY${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}================================================================${reset}"
-        echo -e "  ${cyan}── $(msg menu_sep_proto_short) ───────────────────────────────────────────${reset}"
-        echo -e "  WS:       $(_pad "$s_ws" 16) │  WARP: $(_pad "$s_warp" 22) │  SSL: $s_ssl"
-        echo -e "  Reality:  $(_pad "$s_reality" 16) │  CDN:  $(_pad "$s_connect" 22) │  CF Guard: $s_cfguard"
-        echo -e "  Nginx:    $(_pad "$s_nginx" 16) │"
-        echo -e "  ${cyan}── $(msg menu_sep_tun_short) ────────────────────────────────────────────${reset}"
-        echo -e "  Relay: $(_pad "$s_relay" 19) │  Psiphon: $(_pad "$s_psiphon" 18) │  Tor: $s_tor"
-        echo -e "  ${cyan}── $(msg menu_sep_sec_short) ─────────────────────────────────────────────${reset}"
-        echo -e "  BBR: $(_pad "$s_bbr" 10) │  F2B: $(_pad "$s_f2b" 10) │  Jail: $s_jail"
+        echo -e "  ${cyan}── $(msg menu_sep_proto_short) ──────────────────────────────────────────${reset}"
+        printf "  %-12s %-18s  %-12s %s\n"             "WS:" "$s_ws_c"             "WARP:" "$s_warp"
+        printf "  %-12s %-18s  %-12s %s\n"             "Reality:" "$s_reality_c"             "SSL:" "$s_ssl"
+        printf "  %-12s %-18s  %-12s %s\n"             "Nginx:" "$s_nginx_c"             "CF Guard:" "$s_cfguard"
+        [ -n "$s_connect" ] &&         printf "  %-12s %s\n" "CDN:" "${green}${s_connect}${reset}"
+        echo -e "  ${cyan}── $(msg menu_sep_tun_short) ───────────────────────────────────────────${reset}"
+        printf "  %-12s %-18s  %-12s %-18s  %-10s %s\n"             "Relay:" "$s_relay"             "Psiphon:" "$s_psiphon"             "Tor:" "$s_tor"
+        echo -e "  ${cyan}── $(msg menu_sep_sec_short) ────────────────────────────────────────────${reset}"
+        printf "  %-12s %-18s  %-12s %-18s  %-10s %s\n"             "BBR:" "$s_bbr"             "F2B:" "$s_f2b"             "Jail:" "$s_jail"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
 
         echo -e "  ${green}1.${reset}  $(msg menu_install)"
