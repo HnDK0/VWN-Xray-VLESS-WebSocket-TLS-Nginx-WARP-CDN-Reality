@@ -170,18 +170,18 @@ manageWs() {
     set +e
     while true; do
         clear
-        local s_nginx s_ws s_ssl s_cdn s_domain s_connect
+        local s_nginx s_ws s_ssl s_cfguard s_domain s_connect
         s_nginx=$(getServiceStatus nginx)
         s_ws=$(getServiceStatus xray)
         s_ssl=$(checkCertExpiry)
-        s_cdn=$(getCdnStatus)
+        s_cfguard=$(getCfGuardStatus)
         s_domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // "—"' "$configPath" 2>/dev/null)
         s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
         _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
         echo -e "${cyan}================================================================${reset}"
         echo -e "   $(msg menu_wspath)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CDN:    $(_pad "$s_cdn" 14) │  SSL: $s_ssl"
+        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CF Guard: $(_pad "$s_cfguard" 10) │  SSL: $s_ssl"
         echo -e "  Xray:   $(_pad "$s_ws" 16) │  $(msg status_domain):  $s_domain"
         [ -n "$s_connect" ] && \
         echo -e "  $(printf '%*s' 18 '') │  $(msg status_cdn_arrow) ${green}${s_connect}${reset}"
@@ -192,7 +192,7 @@ manageWs() {
         echo -e "  ${green}4.${reset}  $(msg menu_cdn_host)"
         echo -e "  ${green}5.${reset}  $(msg menu_ssl)"
         echo -e "  ${green}6.${reset}  $(msg menu_stub)"
-        echo -e "  ${green}7.${reset}  $(msg menu_cdn)"
+        echo -e "  ${green}7.${reset}  $(msg menu_cfguard)"
         echo -e "  ${green}8.${reset}  $(msg menu_cf_update_ip)"
         echo -e "  ${green}9.${reset}  $(msg menu_ssl_cron)"
         echo -e "  ${green}10.${reset} $(msg menu_log_cron)"
@@ -211,8 +211,8 @@ manageWs() {
             4)  modifyConnectHost ;;
             5)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
             6)  modifyProxyPassUrl ;;
-            7)  toggleCdnMode ;;
-            8)  setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
+            7)  toggleCfGuard ;;
+            8)  setupRealIpRestore && { [ -f /etc/nginx/conf.d/cf_guard.conf ] && _fetchCfGuardIPs; } && nginx -t && systemctl reload nginx ;;
             9)  manageSslCron ;;
             10) manageLogClearCron ;;
             11) modifyXrayUUID ;;
@@ -231,7 +231,7 @@ menu() {
     # Первичная очистка экрана
     clear
     while true; do
-        local s_nginx s_ws s_reality s_warp s_ssl s_bbr s_f2b s_jail s_cdn s_relay s_psiphon s_tor
+        local s_nginx s_ws s_reality s_warp s_ssl s_bbr s_f2b s_jail s_cfguard s_relay s_psiphon s_tor
         clear
         s_nginx=$(getServiceStatus nginx)
         s_ws=$(getServiceStatus xray)
@@ -241,7 +241,7 @@ menu() {
         s_bbr=$(getBbrStatus)
         s_f2b=$(getF2BStatus)
         s_jail=$(getWebJailStatus)
-        s_cdn=$(getCdnStatus)
+        s_cfguard=$(getCfGuardStatus)
         s_relay=$(getRelayStatus)
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
@@ -250,7 +250,7 @@ menu() {
         printf "   ${red}VWN — VLESS + WARP + CDN + REALITY${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}================================================================${reset}"
         _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
-        echo -e "  Nginx:    $(_pad "$s_nginx" 16) │  BBR:     $(_pad "$s_bbr" 14) │  CDN:     $s_cdn"
+        echo -e "  Nginx:    $(_pad "$s_nginx" 16) │  BBR:     $(_pad "$s_bbr" 14) │  CF Guard: $s_cfguard"
         echo -e "  WS:       $(_pad "$s_ws" 16) │  F2B:     $(_pad "$s_f2b" 14) │  Relay:   $s_relay"
         echo -e "  Reality:  $(_pad "$s_reality" 16) │  SSL:     $(_pad "$s_ssl" 14) │  Psiphon: $s_psiphon"
         echo -e "  WARP:     $(_pad "$s_warp" 16) │  Jail:    $(_pad "$s_jail" 14) │  Tor:     $s_tor"

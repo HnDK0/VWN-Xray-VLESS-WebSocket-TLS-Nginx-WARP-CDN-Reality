@@ -238,8 +238,8 @@ getWebJailStatus() {
     fi
 }
 
-getCdnStatus() {
-    [ -f /etc/nginx/conf.d/cloudflare_whitelist.conf ] \
+getCfGuardStatus() {
+    [ -f /etc/nginx/conf.d/cf_guard.conf ] \
         && echo "${green}ON${reset}" || echo "${red}OFF${reset}"
 }
 

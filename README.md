@@ -3,12 +3,12 @@
 
 # VWN — Xray VLESS + WARP + CDN + Reality
 
-Automated installer for Xray VLESS with XHTTP+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon, and Tor support.
+Automated installer for Xray VLESS with WebSocket+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon, and Tor support.
 
 ## Quick Install
 
 ```bash
-curl -L https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh -o vwn && bash vwn
+bash <(curl -fsSL https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh)
 ```
 
 After installation the script is available as a command:
@@ -25,20 +25,21 @@ vwn update
 
 - Ubuntu 22.04+ / Debian 11+
 - Root access
-- A domain pointed at the server (for XHTTP+TLS)
+- A domain pointed at the server (for WS+TLS)
 - For Reality — only the server IP is needed, no domain required
 
 ## Features
 
-- ✅ **VLESS + XHTTP + TLS** — connections via Cloudflare CDN
+- ✅ **VLESS + WebSocket + TLS** — connections via Cloudflare CDN
 - ✅ **VLESS + Reality** — direct connections without CDN (router, Clash)
 - ✅ **Nginx** — reverse proxy with a stub/decoy site
 - ✅ **Cloudflare WARP** — route selected domains or all traffic
 - ✅ **Psiphon** — censorship bypass with exit country selection
 - ✅ **Tor** — censorship bypass with exit country selection, bridge support (obfs4, snowflake, meek)
 - ✅ **Relay** — external outbound (VLESS/VMess/Trojan/SOCKS via link)
-- ✅ **CDN protection** — blocks direct access, only via Cloudflare
-- ✅ **Multi-user** — multiple UUIDs with labels, individual QR codes
+- ✅ **CF Guard** — blocks direct access, only Cloudflare IPs allowed
+- ✅ **Multi-user** — multiple UUIDs with labels, individual QR codes and subscription URLs
+- ✅ **Subscription URL** — per-user `/sub/` link for v2rayNG, Hiddify, Nekoray and others
 - ✅ **Backup & Restore** — manual backup/restore of all configs
 - ✅ **Diagnostics** — full system check with per-component breakdown
 - ✅ **WARP Watchdog** — auto-reconnect WARP on failure
@@ -53,7 +54,7 @@ vwn update
 
 ```
 Client (CDN/mobile)
-    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+XHTTP → Xray → outbound
+    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+WS → Xray → outbound
 
 Client (router/Clash/direct)
     └── IP:8443/TCP → VLESS+Reality → Xray → outbound
@@ -72,7 +73,7 @@ outbound (by routing rules):
 | Port  | Purpose                           |
 |-------|-----------------------------------|
 | 22    | SSH (configurable)                |
-| 443   | VLESS+XHTTP+TLS via Nginx         |
+| 443   | VLESS+WS+TLS via Nginx            |
 | 8443  | VLESS+Reality (default)           |
 | 40000 | WARP SOCKS5 (warp-cli, local)     |
 | 40002 | Psiphon SOCKS5 (local)            |
@@ -82,115 +83,126 @@ outbound (by routing rules):
 ## CLI Commands
 
 ```bash
-vwn                # Open interactive menu
-vwn update         # Update modules (no config changes)
-vwn status         # Run full diagnostics (no menu)
-vwn backup         # Create backup immediately
-vwn restore        # Restore from backup (interactive)
-vwn qr             # Show QR codes (no menu)
+vwn           # Open interactive menu
+vwn update    # Update modules (no config changes)
 ```
 
 ## Menu
 
 ```
 ================================================================
-   XRAY VLESS + WARP + CDN + REALITY | 27.02.2026 21:00
+   VWN — VLESS + WARP + CDN + REALITY  |  07.03.2026 21:00
 ================================================================
-  NGINX: RUNNING  |  XRAY: RUNNING  |  WARP: ACTIVE | Split
-  SSL: OK (89 d)  |  BBR: ON  |  F2B: OFF
-  WebJail: NO  |  CDN: OFF  |  Reality: ON (port 8443)
-  Relay: ON | Split  |  Psiphon: ON | Split, DE  |  Tor: ON | Split, US
+  Nginx:    RUNNING          │  BBR:     ON             │  CF Guard: OFF
+  WS:       RUNNING          │  F2B:     ON             │  Relay:   OFF
+  Reality:  RUNNING          │  SSL:     OK (89 d)      │  Psiphon: ON | Split
+  WARP:     ACTIVE | Split   │  Jail:    PROTECTED      │  Tor:     OFF
 ----------------------------------------------------------------
-    1.  Install Xray (VLESS+XHTTP+TLS+WARP+CDN)
-    2.  Show QR code and link
-    3.  Change UUID
-    --- Configuration ---
-    4.  Change Xray port
-    5.  Change XHTTP path
-    6.  Change stub site
-    7.  Reissue SSL certificate
-    8.  Change domain
-    --- CDN & WARP ---
-    9.  Toggle CDN mode (ON/OFF)
-    10. Toggle WARP mode (Global/Split/OFF)
-    11. Add domain to WARP
-    12. Remove domain from WARP
-    13. Edit WARP list (Nano)
-    14. Check IP (Real vs WARP)
-    --- Security ---
-    15. Enable BBR
-    16. Enable Fail2Ban
-    17. Enable Web-Jail
-    18. Change SSH port
-    30. Install WARP Watchdog
-    --- Logs ---
-    19. Xray logs (access)
-    20. Xray logs (error)
-    21. Nginx logs (access)
-    22. Nginx logs (error)
-    23. Clear all logs
-    --- Services ---
-    24. Restart all services
-    25. Update Xray-core
-    26. Full removal
-    --- UFW, SSL, Logs ---
-    27. Manage UFW
-    28. Manage SSL auto-renewal
-    29. Manage log auto-clear
-    --- Tunnels ---
-    31. Manage VLESS + Reality
-    32. Manage Relay (external)
-    33. Manage Psiphon
-    34. Manage Tor
-    35. Change language
-    --- Tools ---
-    36. Diagnostics
-    37. Manage users
-    38. Backup & Restore
-    39. Update Cloudflare IPs
-    --- Exit ---
-    0.  Exit
+  1.  Install Xray (VLESS+WS+TLS+WARP+CDN)
+  2.  Manage users
+
+  ─── Tunnels ─────────────────────────
+  3.  Manage WS + CDN
+  4.  Manage VLESS + Reality
+  5.  Manage Relay (external)
+  6.  Manage Psiphon
+  7.  Manage Tor
+
+  ─── CDN & WARP ──────────────────────
+  8.  Toggle WARP mode (Global/Split/OFF)
+  9.  Add domain to WARP
+  10. Remove domain from WARP
+  11. Edit WARP list (Nano)
+  12. Check IP (Real vs WARP)
+  13. Install WARP Watchdog
+
+  ─── Security ────────────────────────
+  14. Enable BBR
+  15. Enable Fail2Ban
+  16. Enable Web-Jail
+  17. Change SSH port
+  18. Manage UFW
+
+  ─── Logs ────────────────────────────
+  19. Xray logs (access)
+  20. Xray logs (error)
+  21. Nginx logs (access)
+  22. Nginx logs (error)
+  23. Clear all logs
+
+  ─── Services ────────────────────────
+  24. Restart all services
+  25. Update Xray-core
+  26. Diagnostics
+  27. Backup & Restore
+  28. Change language
+  29. Full removal
+
+  ─── Exit ────────────────────────────
+  0.  Exit
 ```
 
 ### Status indicators
 
 | Status | Meaning |
 |--------|---------|
-| `ACTIVE | Global` | All traffic routed through tunnel |
-| `ACTIVE | Split` | Only domains from the list |
-| `ACTIVE | route OFF` | Service running but not in routing |
+| `ACTIVE \| Global` | All traffic routed through tunnel |
+| `ACTIVE \| Split` | Only domains from the list |
+| `ACTIVE \| route OFF` | Service running but not in routing |
 | `OFF` | Service not running |
 
-## Multi-user (item 37)
+## Multi-user (item 2)
 
 Multiple VLESS UUIDs with labels (e.g. "iPhone Vasya", "Laptop work").
 
-- Each user gets their own UUID; changes apply to both XHTTP and Reality configs instantly
+- Each user gets their own UUID applied to both WS and Reality configs instantly
 - Add / Remove / Rename users
-- Individual QR code per user (XHTTP and Reality links)
+- Individual QR code per user (WS and Reality links)
+- Individual subscription URL per user
 - Cannot delete the last user
-- Users stored in `/usr/local/etc/xray/users.conf`
+- Users stored in `/usr/local/etc/xray/users.conf` (format: `UUID|label|token`)
 
 On first open, the existing UUID is automatically imported as user `default`.
 
-## Backup & Restore (item 38)
+## Subscription URL
 
-Manual backup of all configs, certificates, cron tasks, fail2ban rules.
+Each user gets a personal subscription URL:
+
+```
+https://your-domain.com/sub/label_token.txt
+```
+
+The file is base64-encoded and contains all connection links for that user (WS+TLS and Reality if installed). Compatible with v2rayNG, Hiddify, Nekoray, Mihomo/Clash Meta and others.
+
+- URL does not change when configs are updated — only the content changes
+- URL changes only when the user is renamed
+- Manage via item 2 → item 3 (QR + Subscription URL) or item 5 (Rebuild all)
+
+## WS + CDN Management (item 3)
+
+Submenu for managing the WebSocket+TLS setup:
+
+| Item | Action |
+|------|--------|
+| 1 | Change Xray port |
+| 2 | Change WS path |
+| 3 | Change domain |
+| 4 | Connection address (CDN domain) |
+| 5 | Reissue SSL certificate |
+| 6 | Change stub site |
+| 7 | CF Guard — Cloudflare-only access (block direct) |
+| 8 | Update Cloudflare IPs |
+| 9 | Manage SSL auto-renewal |
+| 10 | Manage log auto-clear |
+| 11 | Change UUID |
+
+## Backup & Restore (item 27)
 
 Backups stored in `/root/vwn-backups/` with timestamps. No auto-deletion.
 
-```bash
-vwn backup    # Quick backup from CLI
-vwn restore   # Interactive restore from CLI
-```
-
 What is backed up: Xray configs, Nginx + SSL certs, Cloudflare API key, cron tasks, Fail2Ban rules.
 
-## Diagnostics (item 36)
-
-```bash
-vwn status    # Full diagnostics from CLI
-```
+## Diagnostics (item 26)
 
 Full scan or per-component check via submenu:
 
@@ -205,16 +217,6 @@ Full scan or per-component check via submenu:
 
 Output: `✓` / `✗` per check, summary of issues at the end.
 
-## WS → XHTTP Migration
-
-If you have an existing WebSocket installation, run once:
-
-```bash
-bash migrate.sh
-```
-
-Creates a backup, converts config, removes WS headers from Nginx, tests, restarts. Auto-rollback on failure. Update clients to `type=xhttp` after migration.
-
 ## SSL Certificates
 
 **Method 1 — Cloudflare DNS API** (recommended): port 80 not needed.  
@@ -222,9 +224,11 @@ Creates a backup, converts config, removes WS headers from Nginx, tests, restart
 
 Auto-renewal via cron every 35 days at 03:00.
 
-## CDN Mode (item 9)
+## CF Guard (item 3 → 7)
 
-Blocks direct server access, only Cloudflare Proxy allowed. Enable after setting up orange cloud in Cloudflare. Use item 39 to refresh the IP list manually.
+Blocks direct server access — only requests coming through Cloudflare IPs are allowed. Enable after setting up the orange cloud in Cloudflare DNS. Use item 3 → 8 to refresh the Cloudflare IP list.
+
+Note: Real IP restoration (`CF-Connecting-IP`) is applied automatically on installation and is independent of CF Guard.
 
 ## File Structure
 
@@ -232,8 +236,8 @@ Blocks direct server access, only Cloudflare Proxy allowed. Enable after setting
 /usr/local/lib/vwn/
 ├── lang.sh       # Localisation (RU/EN)
 ├── core.sh       # Variables, utilities, status
-├── xray.sh       # Xray XHTTP+TLS config
-├── nginx.sh      # Nginx, CDN, SSL
+├── xray.sh       # Xray WS+TLS config
+├── nginx.sh      # Nginx, CDN, SSL, subscriptions
 ├── warp.sh       # WARP management
 ├── reality.sh    # VLESS+Reality
 ├── relay.sh      # External outbound
@@ -247,11 +251,13 @@ Blocks direct server access, only Cloudflare Proxy allowed. Enable after setting
 └── menu.sh       # Main menu
 
 /usr/local/etc/xray/
-├── config.json              # VLESS+XHTTP config
+├── config.json              # VLESS+WS config
 ├── reality.json             # VLESS+Reality config
 ├── reality_client.txt       # Reality client params
-├── vwn.conf                 # VWN settings
-├── users.conf               # User list (UUID|label)
+├── vwn.conf                 # VWN settings (lang, etc.)
+├── users.conf               # User list (UUID|label|token)
+├── sub/                     # Subscription files
+│   └── label_token.txt
 ├── warp_domains.txt
 ├── psiphon.json
 ├── psiphon_domains.txt
@@ -266,8 +272,8 @@ Blocks direct server access, only Cloudflare Proxy allowed. Enable after setting
 ## Troubleshooting
 
 ```bash
-# Something not working
-vwn status
+# Something not working — run diagnostics
+vwn  # item 26
 
 # WARP won't connect
 systemctl restart warp-svc && sleep 5 && warp-cli --accept-tos connect
@@ -281,14 +287,17 @@ xray -test -config /usr/local/etc/xray/reality.json
 # Nginx after IPv6 disable
 sed -i '/listen \[::\]:443/d' /etc/nginx/conf.d/xray.conf && nginx -t && systemctl reload nginx
 
-# Tor — try bridges (item 34 → 11)
+# Tor — try bridges (item 7 → 11)
 tail -50 /var/log/tor/notices.log
+
+# Subscription not updating
+vwn  # item 2 → item 5 (Rebuild all subscription files)
 ```
 
 ## Removal
 
 ```bash
-vwn  # Item 26
+vwn  # item 29
 ```
 
 Note: backups in `/root/vwn-backups/` are not removed automatically.
@@ -314,12 +323,12 @@ MIT License
 
 # VWN — Xray VLESS + WARP + CDN + Reality
 
-Автоматический установщик Xray VLESS с поддержкой XHTTP+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon и Tor.
+Автоматический установщик Xray VLESS с поддержкой WebSocket+TLS, Reality, Cloudflare WARP, CDN, Relay, Psiphon и Tor.
 
 ## Быстрая установка
 
 ```bash
-curl -L https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh -o vwn && bash vwn
+bash <(curl -fsSL https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh)
 ```
 
 После установки скрипт доступен как команда:
@@ -336,20 +345,21 @@ vwn update
 
 - Ubuntu 22.04+ / Debian 11+
 - Root доступ
-- Домен, направленный на сервер (для XHTTP+TLS)
+- Домен, направленный на сервер (для WS+TLS)
 - Для Reality — только IP сервера, домен не нужен
 
 ## Особенности
 
-- ✅ **VLESS + XHTTP + TLS** — подключения через Cloudflare CDN
+- ✅ **VLESS + WebSocket + TLS** — подключения через Cloudflare CDN
 - ✅ **VLESS + Reality** — прямые подключения без CDN (роутер, Clash)
 - ✅ **Nginx** — reverse proxy с сайтом-заглушкой
 - ✅ **Cloudflare WARP** — роутинг выбранных доменов или всего трафика
 - ✅ **Psiphon** — обход блокировок с выбором страны выхода
 - ✅ **Tor** — обход блокировок с выбором страны выхода, поддержка мостов (obfs4, snowflake, meek)
 - ✅ **Relay** — внешний outbound (VLESS/VMess/Trojan/SOCKS по ссылке)
-- ✅ **CDN защита** — блокировка прямого доступа, только через Cloudflare
-- ✅ **Мульти-пользователи** — несколько UUID с метками, индивидуальные QR коды
+- ✅ **CF Guard** — блокировка прямого доступа, только Cloudflare IP
+- ✅ **Мульти-пользователи** — несколько UUID с метками, индивидуальные QR коды и ссылки подписки
+- ✅ **Ссылка подписки** — персональный `/sub/` URL для v2rayNG, Hiddify, Nekoray и других
 - ✅ **Бэкап и восстановление** — ручной бэкап/восстановление всех конфигов
 - ✅ **Диагностика** — полная проверка системы с детализацией по компонентам
 - ✅ **WARP Watchdog** — автовосстановление WARP при обрыве
@@ -364,7 +374,7 @@ vwn update
 
 ```
 Клиент (CDN/мобильный)
-    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+XHTTP → Xray → outbound
+    └── Cloudflare CDN → 443/HTTPS → Nginx → VLESS+WS → Xray → outbound
 
 Клиент (роутер/Clash/прямое)
     └── IP:8443/TCP → VLESS+Reality → Xray → outbound
@@ -383,7 +393,7 @@ outbound (по routing rules):
 | Порт  | Назначение                        |
 |-------|-----------------------------------|
 | 22    | SSH (изменяемый)                  |
-| 443   | VLESS+XHTTP+TLS через Nginx       |
+| 443   | VLESS+WS+TLS через Nginx          |
 | 8443  | VLESS+Reality (по умолчанию)      |
 | 40000 | WARP SOCKS5 (warp-cli, локальный) |
 | 40002 | Psiphon SOCKS5 (локальный)        |
@@ -393,144 +403,125 @@ outbound (по routing rules):
 ## CLI команды
 
 ```bash
-vwn                # Открыть интерактивное меню
-vwn update         # Обновить модули (без изменения конфигов)
-vwn status         # Полная диагностика (без меню)
-vwn backup         # Создать бэкап немедленно
-vwn restore        # Восстановить из бэкапа (интерактивно)
-vwn qr             # Показать QR коды (без меню)
+vwn           # Открыть интерактивное меню
+vwn update    # Обновить модули (без изменения конфигов)
 ```
 
 ## Меню управления
 
 ```
 ================================================================
-   XRAY VLESS + WARP + CDN + REALITY | 27.02.2026 21:00
+   VWN — VLESS + WARP + CDN + REALITY  |  07.03.2026 21:00
 ================================================================
-  NGINX: RUNNING  |  XRAY: RUNNING  |  WARP: ACTIVE | Split
-  SSL: OK (89 d)  |  BBR: ON  |  F2B: OFF
-  WebJail: NO  |  CDN: OFF  |  Reality: ON (порт 8443)
-  Relay: ON | Split  |  Psiphon: ON | Split, DE  |  Tor: ON | Split, US
+  Nginx:    RUNNING          │  BBR:     ON             │  CF Guard: OFF
+  WS:       RUNNING          │  F2B:     ON             │  Relay:   OFF
+  Reality:  RUNNING          │  SSL:     OK (89 d)      │  Psiphon: ON | Split
+  WARP:     ACTIVE | Split   │  Jail:    PROTECTED      │  Tor:     OFF
 ----------------------------------------------------------------
-    1.  Установить Xray (VLESS+XHTTP+TLS+WARP+CDN)
-    2.  Показать QR-код и ссылку
-    3.  Сменить UUID
-    --- Конфигурация ---
-    4.  Изменить порт Xray
-    5.  Изменить путь XHTTP
-    6.  Изменить сайт-заглушку
-    7.  Перевыпустить SSL сертификат
-    8.  Сменить домен
-    --- CDN и WARP ---
-    9.  Переключить CDN режим (ON/OFF)
-    10. Переключить режим WARP (Global/Split/OFF)
-    11. Добавить домен в WARP
-    12. Удалить домен из WARP
-    13. Редактировать список WARP (Nano)
-    14. Проверить IP (Real vs WARP)
-    --- Безопасность ---
-    15. Включить BBR
-    16. Включить Fail2Ban
-    17. Включить Web-Jail
-    18. Сменить SSH порт
-    30. Установить WARP Watchdog
-    --- Логи ---
-    19. Логи Xray (access)
-    20. Логи Xray (error)
-    21. Логи Nginx (access)
-    22. Логи Nginx (error)
-    23. Очистить все логи
-    --- Сервисы ---
-    24. Перезапустить все сервисы
-    25. Обновить Xray-core
-    26. Полное удаление
-    --- UFW, SSL, Logs ---
-    27. Управление UFW
-    28. Управление автообновлением SSL
-    29. Управление автоочисткой логов
-    --- Туннели ---
-    31. Управление VLESS + Reality
-    32. Управление Relay (внешний сервер)
-    33. Управление Psiphon
-    34. Управление Tor
-    35. Сменить язык / Change language
-    --- Инструменты ---
-    36. Диагностика
-    37. Управление пользователями
-    38. Бэкап и восстановление
-    39. Обновить IP Cloudflare
-    --- Выход ---
-    0.  Выйти
+  1.  Установить Xray (VLESS+WS+TLS+WARP+CDN)
+  2.  Управление пользователями
+
+  ─── Туннели ──────────────────────────
+  3.  Управление WS + CDN
+  4.  Управление VLESS + Reality
+  5.  Управление Relay (внешний сервер)
+  6.  Управление Psiphon
+  7.  Управление Tor
+
+  ─── CDN и WARP ───────────────────────
+  8.  Переключить режим WARP (Global/Split/OFF)
+  9.  Добавить домен в WARP
+  10. Удалить домен из WARP
+  11. Редактировать список WARP (Nano)
+  12. Проверить IP (Real vs WARP)
+  13. Установить WARP Watchdog
+
+  ─── Безопасность ─────────────────────
+  14. Включить BBR
+  15. Включить Fail2Ban
+  16. Включить Web-Jail
+  17. Сменить SSH порт
+  18. Управление UFW
+
+  ─── Логи ─────────────────────────────
+  19. Логи Xray (access)
+  20. Логи Xray (error)
+  21. Логи Nginx (access)
+  22. Логи Nginx (error)
+  23. Очистить все логи
+
+  ─── Сервисы ──────────────────────────
+  24. Перезапустить все сервисы
+  25. Обновить Xray-core
+  26. Диагностика
+  27. Бэкап и восстановление
+  28. Сменить язык / Change language
+  29. Полное удаление
+
+  ─── Выход ────────────────────────────
+  0.  Выйти
 ```
 
 ### Статусы в заголовке
 
 | Статус | Описание |
 |--------|----------|
-| `ACTIVE | Global` | Весь трафик идёт через туннель |
-| `ACTIVE | Split` | Только домены из списка |
-| `ACTIVE | маршрут OFF` | Сервис запущен, но не в роутинге |
+| `ACTIVE \| Global` | Весь трафик идёт через туннель |
+| `ACTIVE \| Split` | Только домены из списка |
+| `ACTIVE \| маршрут OFF` | Сервис запущен, но не в роутинге |
 | `OFF` | Сервис не запущен |
 
-## Туннели (пункты 31–34)
-
-Все туннели: **Global / Split / OFF**. Применяются к обоим конфигам (XHTTP и Reality).
-
-### VLESS + Reality (пункт 31)
-
-Прямые подключения без CDN. Отдельный сервис `xray-reality`.
-
-```
-vless://UUID@IP:8443?security=reality&sni=microsoft.com&fp=chrome&pbk=KEY&sid=SID&type=tcp&flow=xtls-rprx-vision
-```
-
-### Relay (пункт 32)
-
-Поддерживает: `vless://` `vmess://` `trojan://` `socks5://`
-
-### Psiphon (пункт 33)
-
-Выбор страны выхода: DE, NL, US, GB, FR, AT, CA, SE и др.
-
-### Tor (пункт 34)
-
-Выбор страны выхода через `ExitNodes`. Поддержка мостов: obfs4, snowflake, meek-azure. **Рекомендуется Split режим** — Tor медленнее обычного интернета.
-
-## WARP (пункты 10–14)
-
-**Split** (по умолчанию): `openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com`
-
-**Global** — весь трафик через WARP. **OFF** — отключён от роутинга.
-
-**WARP Watchdog (пункт 30)** — cron каждые 2 минуты, автопереподключение.
-
-## Мульти-пользователи (пункт 37)
+## Мульти-пользователи (пункт 2)
 
 Несколько VLESS UUID с произвольными метками ("iPhone Vasya", "Ноутбук работа").
 
 - Добавить / Удалить / Переименовать / QR для каждого
-- Изменения мгновенно применяются к обоим конфигам
+- Изменения мгновенно применяются к обоим конфигам (WS и Reality)
+- Индивидуальная ссылка подписки для каждого пользователя
 - Последнего пользователя удалить нельзя
-- Хранится в `/usr/local/etc/xray/users.conf`
+- Хранится в `/usr/local/etc/xray/users.conf` (формат: `UUID|метка|токен`)
 
-При первом открытии существующий UUID импортируется как `default`.
+При первом открытии существующий UUID импортируется как пользователь `default`.
 
-## Бэкап и восстановление (пункт 38)
+## Ссылка подписки
+
+Каждый пользователь получает персональную ссылку подписки:
+
+```
+https://ваш-домен.com/sub/label_token.txt
+```
+
+Файл закодирован в base64 и содержит все ссылки подключения для этого пользователя (WS+TLS и Reality если установлен). Совместим с v2rayNG, Hiddify, Nekoray, Mihomo/Clash Meta и другими.
+
+- URL не меняется при обновлении конфигов — меняется только содержимое
+- URL меняется только при переименовании пользователя
+- Управление через пункт 2 → пункт 3 (QR + Subscription URL) или пункт 5 (Пересоздать все)
+
+## Управление WS + CDN (пункт 3)
+
+Подменю управления WebSocket+TLS установкой:
+
+| Пункт | Действие |
+|-------|----------|
+| 1 | Изменить порт Xray |
+| 2 | Изменить путь WS |
+| 3 | Сменить домен |
+| 4 | Адрес подключения (CDN домен) |
+| 5 | Перевыпустить SSL сертификат |
+| 6 | Изменить сайт-заглушку |
+| 7 | CF Guard — только Cloudflare IP (блок прямого доступа) |
+| 8 | Обновить IP Cloudflare |
+| 9 | Управление автообновлением SSL |
+| 10 | Управление автоочисткой логов |
+| 11 | Сменить UUID |
+
+## Бэкап и восстановление (пункт 27)
 
 Бэкапы в `/root/vwn-backups/` с датой и временем. Автоудаления нет.
 
-```bash
-vwn backup    # Быстрый бэкап из CLI
-vwn restore   # Интерактивное восстановление
-```
-
 Включает: конфиги Xray, Nginx + SSL, API ключи Cloudflare, cron, Fail2Ban.
 
-## Диагностика (пункт 36)
-
-```bash
-vwn status    # Полная диагностика из CLI
-```
+## Диагностика (пункт 26)
 
 | Раздел | Проверки |
 |--------|----------|
@@ -543,13 +534,37 @@ vwn status    # Полная диагностика из CLI
 
 Вывод: `✓` / `✗` по каждой проверке + итоговый список проблем.
 
-## Миграция WS → XHTTP
+## Туннели (пункты 3–7)
 
-```bash
-bash migrate.sh
+Все туннели поддерживают режимы: **Global / Split / OFF**. Применяются к обоим конфигам (WS и Reality).
+
+### VLESS + Reality (пункт 4)
+
+Прямые подключения без CDN. Отдельный сервис `xray-reality`.
+
+```
+vless://UUID@IP:8443?security=reality&sni=microsoft.com&fp=chrome&pbk=KEY&sid=SID&type=tcp&flow=xtls-rprx-vision
 ```
 
-Автобэкап → конвертация конфига → обновление Nginx → перезапуск. Автооткат при ошибке. После миграции обновите клиенты на `type=xhttp`.
+### Relay (пункт 5)
+
+Поддерживает: `vless://` `vmess://` `trojan://` `socks5://`
+
+### Psiphon (пункт 6)
+
+Выбор страны выхода: DE, NL, US, GB, FR, AT, CA, SE и др.
+
+### Tor (пункт 7)
+
+Выбор страны выхода через `ExitNodes`. Поддержка мостов: obfs4, snowflake, meek-azure. **Рекомендуется Split режим** — Tor медленнее обычного интернета.
+
+## WARP (пункты 8–13)
+
+**Split** (по умолчанию): `openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com`
+
+**Global** — весь трафик через WARP. **OFF** — отключён от роутинга.
+
+**WARP Watchdog (пункт 13)** — cron каждые 2 минуты, автопереподключение.
 
 ## SSL сертификаты
 
@@ -558,9 +573,11 @@ bash migrate.sh
 
 Автообновление через cron раз в 35 дней в 3:00.
 
-## CDN режим (пункт 9)
+## CF Guard (пункт 3 → 7)
 
-Блокирует прямой доступ, только через Cloudflare Proxy. Включайте после настройки оранжевого облака. Пункт 39 — обновить список IP вручную.
+Блокирует прямой доступ к серверу — пропускает только запросы с IP Cloudflare. Включайте после настройки оранжевого облака в Cloudflare DNS. Пункт 3 → 8 — обновить список IP Cloudflare вручную.
+
+Примечание: восстановление реального IP (`CF-Connecting-IP`) применяется автоматически при установке и не зависит от CF Guard.
 
 ## Структура файлов
 
@@ -568,8 +585,8 @@ bash migrate.sh
 /usr/local/lib/vwn/
 ├── lang.sh       # Локализация (RU/EN)
 ├── core.sh       # Переменные, утилиты, статусы
-├── xray.sh       # Xray XHTTP+TLS конфиг
-├── nginx.sh      # Nginx, CDN, SSL
+├── xray.sh       # Xray WS+TLS конфиг
+├── nginx.sh      # Nginx, CDN, SSL, подписки
 ├── warp.sh       # WARP управление
 ├── reality.sh    # VLESS+Reality
 ├── relay.sh      # Внешний outbound
@@ -583,11 +600,13 @@ bash migrate.sh
 └── menu.sh       # Главное меню
 
 /usr/local/etc/xray/
-├── config.json              # Конфиг VLESS+XHTTP
+├── config.json              # Конфиг VLESS+WS
 ├── reality.json             # Конфиг VLESS+Reality
 ├── reality_client.txt       # Параметры клиента Reality
-├── vwn.conf                 # Настройки VWN
-├── users.conf               # Список пользователей (UUID|метка)
+├── vwn.conf                 # Настройки VWN (язык и др.)
+├── users.conf               # Список пользователей (UUID|метка|токен)
+├── sub/                     # Файлы подписок
+│   └── label_token.txt
 ├── warp_domains.txt
 ├── psiphon.json
 ├── psiphon_domains.txt
@@ -602,8 +621,8 @@ bash migrate.sh
 ## Решение проблем
 
 ```bash
-# Что-то не работает
-vwn status
+# Что-то не работает — запустить диагностику
+vwn  # пункт 26
 
 # WARP не подключается
 systemctl restart warp-svc && sleep 5 && warp-cli --accept-tos connect
@@ -617,14 +636,17 @@ xray -test -config /usr/local/etc/xray/reality.json
 # Nginx после отключения IPv6
 sed -i '/listen \[::\]:443/d' /etc/nginx/conf.d/xray.conf && nginx -t && systemctl reload nginx
 
-# Tor — попробовать мосты (пункт 34 → 11)
+# Tor — попробовать мосты (пункт 7 → 11)
 tail -50 /var/log/tor/notices.log
+
+# Подписка не обновляется
+vwn  # пункт 2 → пункт 5 (Пересоздать файлы подписки)
 ```
 
 ## Удаление
 
 ```bash
-vwn  # Пункт 26
+vwn  # Пункт 29
 ```
 
 Бэкапы в `/root/vwn-backups/` автоматически не удаляются.
@@ -640,4 +662,5 @@ vwn  # Пункт 26
 ## Лицензия
 
 MIT License
+
 </details>

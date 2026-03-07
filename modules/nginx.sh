@@ -3,8 +3,15 @@
 # nginx.sh — Nginx конфиг, CDN, SSL сертификаты
 # =================================================================
 
-_percentEncode() {
-    printf '%s' "$1" | od -An -tx1 | tr -d ' \n' | sed 's/../%&/g' | tr 'a-f' 'A-F'
+_getCountryCode() {
+    local ip="$1"
+    local code
+    code=$(curl -s --connect-timeout 5 "http://ip-api.com/line/${ip}?fields=countryCode" 2>/dev/null | tr -d '[:space:]')
+    if [[ "$code" =~ ^[A-Z]{2}$ ]]; then
+        echo "[$code]"
+    else
+        echo "[??]"
+    fi
 }
 
 setNginxCert() {
@@ -148,33 +155,30 @@ server {
 }
 EOF
 
-    # Генерируем map-блок для красивых имён файлов подписки
-    local server_ip flag encoded_prefix
+    # Генерируем map-блок для имён подписок
+    local server_ip country_code
     server_ip=$(getServerIP 2>/dev/null || curl -s --connect-timeout 5 ifconfig.me)
-    flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
-    encoded_prefix=$(_percentEncode "${flag} VLESS | ")
+    country_code=$(_getCountryCode "$server_ip")
     cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
 map \$uri \$sub_label {
-    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${encoded_prefix}\$label";
-    default                                                   "${encoded_prefix}";
+    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${country_code} VLESS | \$label";
+    default                                                    "${country_code} VLESS";
 }
 MAPEOF
+    # Восстанавливаем реальный IP — всегда нужно при Cloudflare
+    setupRealIpRestore
 }
 
-setupCloudflareIPs() {
+# Восстановление реального IP клиента из CF-Connecting-IP.
+# Вызывается автоматически при writeNginxConfig.
+# nginx.conf уже содержит include conf.d/*.conf — отдельный include не нужен.
+setupRealIpRestore() {
     echo -e "${cyan}$(msg cf_ips_setup)${reset}"
-    local tmp_r tmp_w
-    tmp_r=$(mktemp) && tmp_w=$(mktemp) || return 1
-    trap 'rm -f "$tmp_r" "$tmp_w"' RETURN
+    local tmp
+    tmp=$(mktemp) || return 1
+    trap 'rm -f "$tmp"' RETURN
 
-    cat > "$tmp_r" << 'HDR'
-# Cloudflare real IP restore
-HDR
-    cat > "$tmp_w" << 'GEOHDR'
-# Cloudflare IP whitelist
-geo $realip_remote_addr $cloudflare_ip {
-    default 0;
-GEOHDR
+    printf '# Cloudflare real IP restore — auto-generated\n' > "$tmp"
 
     local ok=0
     for t in v4 v6; do
@@ -182,47 +186,59 @@ GEOHDR
         result=$(curl -fsSL --connect-timeout 10 "https://www.cloudflare.com/ips-$t" 2>/dev/null) || continue
         while IFS= read -r ip; do
             [ -z "$ip" ] && continue
-            echo "set_real_ip_from $ip;" >> "$tmp_r"
-            echo "    $ip 1;" >> "$tmp_w"
+            echo "set_real_ip_from $ip;" >> "$tmp"
             ok=1
         done < <(echo "$result" | grep -E '^[0-9a-fA-F:.]+(/[0-9]+)?$')
     done
 
     [ "$ok" -eq 0 ] && { echo "${red}$(msg cf_ips_fail)${reset}"; return 1; }
 
-    echo "real_ip_header CF-Connecting-IP;" >> "$tmp_r"
-    echo "real_ip_recursive on;" >> "$tmp_r"
-    echo "}" >> "$tmp_w"
+    printf 'real_ip_header CF-Connecting-IP;\nreal_ip_recursive on;\n' >> "$tmp"
 
     mkdir -p /etc/nginx/conf.d
-    mv -f "$tmp_r" /etc/nginx/conf.d/cloudflare_real_ips.conf
-    mv -f "$tmp_w" /etc/nginx/conf.d/cloudflare_whitelist.conf
-
-    for inc in cloudflare_real_ips cloudflare_whitelist; do
-        if ! grep -q "${inc}" /etc/nginx/nginx.conf 2>/dev/null; then
-            sed -i "/^http {/a\\    include /etc/nginx/conf.d/${inc}.conf;" /etc/nginx/nginx.conf
-        fi
-    done
-
-    nginx -t 2>/dev/null || { echo "${red}$(msg nginx_syntax_err)${reset}"; nginx -t; return 1; }
+    mv -f "$tmp" /etc/nginx/conf.d/real_ip_restore.conf
     echo "${green}$(msg cf_ips_ok)${reset}"
 }
 
-toggleCdnMode() {
-    if [ -f /etc/nginx/conf.d/cloudflare_whitelist.conf ]; then
-        echo -e "${yellow}$(msg cdn_disable_confirm) $(msg yes_no)${reset}"
+# CF Guard — блокировка прямого доступа, только Cloudflare IP.
+# Включается вручную через меню (пункт 3→7).
+_fetchCfGuardIPs() {
+    local tmp
+    tmp=$(mktemp) || return 1
+
+    printf '# CF Guard — allow only Cloudflare IPs — auto-generated\ngeo $realip_remote_addr $cloudflare_ip {\n    default 0;\n' > "$tmp"
+
+    local ok=0
+    for t in v4 v6; do
+        local result
+        result=$(curl -fsSL --connect-timeout 10 "https://www.cloudflare.com/ips-$t" 2>/dev/null) || continue
+        while IFS= read -r ip; do
+            [ -z "$ip" ] && continue
+            echo "    $ip 1;" >> "$tmp"
+            ok=1
+        done < <(echo "$result" | grep -E '^[0-9a-fA-F:.]+(/[0-9]+)?$')
+    done
+
+    [ "$ok" -eq 0 ] && { rm -f "$tmp"; echo "${red}$(msg cf_ips_fail)${reset}"; return 1; }
+    echo "}" >> "$tmp"
+
+    mkdir -p /etc/nginx/conf.d
+    mv -f "$tmp" /etc/nginx/conf.d/cf_guard.conf
+    echo "${green}$(msg cf_ips_ok)${reset}"
+}
+
+toggleCfGuard() {
+    if [ -f /etc/nginx/conf.d/cf_guard.conf ]; then
+        echo -e "${yellow}$(msg cfguard_disable_confirm) $(msg yes_no)${reset}"
         read -r confirm
         if [[ "$confirm" == "y" ]]; then
-            rm -f /etc/nginx/conf.d/cloudflare_whitelist.conf
-            rm -f /etc/nginx/conf.d/cloudflare_real_ips.conf
-            sed -i '/cloudflare_real_ips\|cloudflare_whitelist/d' /etc/nginx/nginx.conf 2>/dev/null || true
+            rm -f /etc/nginx/conf.d/cf_guard.conf
             sed -i '/cloudflare_ip.*!=.*1/d' "$nginxPath" 2>/dev/null || true
             nginx -t && systemctl reload nginx
-            echo "${green}$(msg cdn_disabled)${reset}"
+            echo "${green}$(msg cfguard_disabled)${reset}"
         fi
     else
-        echo -e "${cyan}$(msg cdn_enabling)${reset}"
-        setupCloudflareIPs || return 1
+        _fetchCfGuardIPs || return 1
         local wsPath
         wsPath=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath" 2>/dev/null)
         if [ -n "$wsPath" ] && [ "$wsPath" != "null" ]; then
@@ -240,9 +256,10 @@ PYEOF
         fi
         nginx -t || { echo "${red}$(msg nginx_syntax_err)${reset}"; nginx -t; return 1; }
         systemctl reload nginx
-        echo "${green}$(msg cdn_enabled)${reset}"
+        echo "${green}$(msg cfguard_enabled)${reset}"
     fi
 }
+
 
 openPort80() {
     ufw status | grep -q inactive && return
@@ -307,15 +324,14 @@ configCert() {
 applyNginxSub() {
     [ ! -f "$nginxPath" ] && return 1
 
-    # Обновляем/создаём sub_map.conf с актуальным флагом
-    local server_ip flag encoded_prefix
+    # Обновляем/создаём sub_map.conf с актуальным кодом страны
+    local server_ip country_code
     server_ip=$(getServerIP 2>/dev/null || curl -s --connect-timeout 5 ifconfig.me)
-    flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
-    encoded_prefix=$(_percentEncode "${flag} VLESS | ")
+    country_code=$(_getCountryCode "$server_ip")
     cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
 map \$uri \$sub_label {
-    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${encoded_prefix}\$label";
-    default                                                   "${encoded_prefix}";
+    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${country_code} VLESS | \$label";
+    default                                                    "${country_code} VLESS";
 }
 MAPEOF
 
