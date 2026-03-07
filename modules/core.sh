@@ -268,3 +268,25 @@ _pad() {
     vis=$(printf '%s' "$v" | sed 's/\x1b\[[0-9;]*[mABCDJKHf]//g; s/\x1b(B//g')
     printf "%s%*s" "$v" $((w - ${#vis})) ""
 }
+
+# ============================================================
+# УТИЛИТА: конвертация файла доменов в JSON-массив для Xray
+# Убирает префикс domain:, ведущую точку, конвертирует IDN
+# ============================================================
+domainsToJson() {
+    local file="$1"
+    [ ! -f "$file" ] && echo "" && return
+    local result=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#domain:}"
+        line="${line#.}"
+        line=$(echo "$line" | tr -d '[:space:]')
+        [ -z "$line" ] && continue
+        if echo "$line" | grep -qP '[^\x00-\x7F]' 2>/dev/null; then
+            line=$(python3 -c "import encodings.idna; parts=\'$line\'.split(\'.\'); print(\'.\'.join(encodings.idna.ToASCII(p).decode() for p in parts))" 2>/dev/null || echo "$line")
+        fi
+        [ -n "$result" ] && result="$result,"
+        result="$result\"domain:$line\""
+    done < "$file"
+    echo "$result"
+}
