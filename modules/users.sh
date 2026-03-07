@@ -70,8 +70,12 @@ _initUsersFile() {
     fi
 
     if [ -n "$existing_uuid" ] && [ "$existing_uuid" != "null" ]; then
-        echo "${existing_uuid}|default|$(_genToken)" > "$USERS_FILE"
+        local token
+        token=$(_genToken)
+        echo "${existing_uuid}|default|${token}" > "$USERS_FILE"
         echo "${green}$(msg users_migrated): $existing_uuid${reset}"
+        # Сразу строим sub файл чтобы подписка работала
+        buildUserSubFile "$existing_uuid" "default" "$token" 2>/dev/null || true
     fi
 }
 
@@ -82,24 +86,29 @@ buildUserSubFile() {
     mkdir -p "$SUB_DIR"
     applyNginxSub 2>/dev/null || true
 
-    local domain lines=""
+    local domain lines="" server_ip flag
     domain=$(_getDomain)
+    server_ip=$(getServerIP)
+    flag=$(_getCountryFlag "$server_ip")
 
     if [ -f "$configPath" ] && [ -n "$domain" ]; then
-        local xp xep
-        xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
-        xep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xp" 2>/dev/null)
-        lines+="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=xhttp&host=${domain}&path=${xep}#${label}"$'\n'
+        local wp wep name encoded_name
+        wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
+        wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
+        name="${flag} VL-WS-CDN | ${label} ${flag}"
+        encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
+        lines+="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"$'\n'
     fi
 
     if [ -f "$realityConfigPath" ]; then
-        local r_port r_shortId r_destHost r_pubKey r_serverIP
+        local r_port r_shortId r_destHost r_pubKey r_name r_encoded_name
         r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
         r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
         r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
         r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
-        r_serverIP=$(getServerIP)
-        lines+="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"$'\n'
+        r_name="${flag} VL-Reality | ${label} ${flag}"
+        r_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$r_name" 2>/dev/null || echo "$r_name")
+        lines+="vless://${uuid}@${server_ip}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"$'\n'
     fi
 
     local filename
@@ -232,22 +241,26 @@ showUserQR() {
     local domain
     domain=$(_getDomain)
 
-    # XHTTP
+    # WebSocket
     if [ -f "$configPath" ] && [ -n "$domain" ]; then
-        local xp xep url_xhttp json outfile
-        xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
-        xep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xp" 2>/dev/null)
-        url_xhttp="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=xhttp&host=${domain}&path=${xep}#${label}"
+        local wp wep url_ws json outfile server_ip flag name encoded_name
+        wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
+        wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
+        server_ip=$(getServerIP)
+        flag=$(_getCountryFlag "$server_ip")
+        name="${flag} VL-WS-CDN | ${label} ${flag}"
+        encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
+        url_ws="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"
 
         echo -e "${cyan}================================================================${reset}"
-        echo -e "   XHTTP+TLS — ${label}"
+        echo -e "   ${name}"
         echo -e "${cyan}================================================================${reset}\n"
 
         echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
-        qrencode -s 1 -t ANSI "$url_xhttp" 2>/dev/null || true
-        echo -e "\n${green}${url_xhttp}${reset}\n"
+        qrencode -s 1 -m 1 -t ANSIUTF8 "$url_ws" 2>/dev/null || true
+        echo -e "\n${green}${url_ws}${reset}\n"
 
-        json=$(_getXhttpJsonConfig "$uuid" "$domain" "$xp")
+        json=$(_getWsJsonConfig "$uuid" "$domain" "$wp")
         outfile="/root/vwn-client-${label}.json"
         echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
         echo -e "${yellow}${json}${reset}"
@@ -256,7 +269,7 @@ showUserQR() {
         echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
 
         echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
-        echo -e "${yellow}- name: ${label}
+        echo -e "${yellow}- name: ${name}
   type: vless
   server: ${domain}
   port: 443
@@ -264,27 +277,30 @@ showUserQR() {
   tls: true
   servername: ${domain}
   client-fingerprint: chrome
-  network: xhttp
-  xhttp-opts:
-    path: ${xp}
-    host: ${domain}
-    mode: stream-one${reset}\n"
+  network: ws
+  ws-opts:
+    path: ${wp}
+    headers:
+      Host: ${domain}${reset}\n"
 
         echo -e "${cyan}================================================================${reset}"
     fi
 
     # Reality
     if [ -f "$realityConfigPath" ]; then
-        local r_port r_shortId r_destHost r_pubKey r_serverIP url_reality
+        local r_port r_shortId r_destHost r_pubKey r_serverIP r_flag r_name r_encoded_name url_reality
         r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
         r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
         r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
         r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
         r_serverIP=$(getServerIP)
-        url_reality="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"
+        r_flag=$(_getCountryFlag "$r_serverIP")
+        r_name="${r_flag} VL-Reality | ${label} ${r_flag}"
+        r_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$r_name" 2>/dev/null || echo "$r_name")
+        url_reality="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"
 
-        echo -e "\n${cyan}=== Reality: ${label} ===${reset}"
-        qrencode -s 1 -t ANSI "$url_reality" 2>/dev/null || true
+        echo -e "\n${cyan}=== ${r_name} ===${reset}"
+        qrencode -s 1 -m 1 -t ANSIUTF8 "$url_reality" 2>/dev/null || true
         echo -e "\n${green}${url_reality}${reset}\n"
     fi
 
@@ -294,7 +310,7 @@ showUserQR() {
     sub_url=$(getSubUrl "$label" "$token")
     if [ -n "$sub_url" ]; then
         echo -e "${cyan}[ Subscription URL — все протоколы сразу ]${reset}"
-        qrencode -s 1 -t ANSI "$sub_url" 2>/dev/null || true
+        qrencode -s 1 -m 1 -t ANSIUTF8 "$sub_url" 2>/dev/null || true
         echo -e "\n${green}${sub_url}${reset}"
         echo -e "${yellow}v2rayNG: + → Subscription group → URL${reset}"
     fi

@@ -124,6 +124,10 @@ net.ipv4.tcp_max_syn_backlog = 65535
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
+# TCP keepalive — держит WS соединения живыми через NAT мобильных операторов
+net.ipv4.tcp_keepalive_time = 120
+net.ipv4.tcp_keepalive_intvl = 10
+net.ipv4.tcp_keepalive_probes = 3
 SYSCTL
     sysctl --system &>/dev/null
     sysctl -p /etc/sysctl.d/99-xray.conf &>/dev/null

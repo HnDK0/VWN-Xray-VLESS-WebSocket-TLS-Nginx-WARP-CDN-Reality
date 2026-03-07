@@ -43,7 +43,11 @@ http {
     sendfile on;
     tcp_nopush on;
     tcp_nodelay on;
-    keepalive_timeout 65;
+
+    # Keepalive — чуть больше чем у Cloudflare (70s), чтобы не рвать соединения
+    keepalive_timeout 75s;
+    keepalive_requests 10000;
+
     server_tokens off;
     gzip on;
     gzip_vary on;
@@ -71,9 +75,11 @@ server {
 }
 DEFAULTCONF
 
+    # Основной конфиг без http2 — WS работает только на HTTP/1.1,
+    # http2 создаёт проблемы с upgrade на мобильных клиентах
     cat > "$nginxPath" << EOF
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name $domain;
 
     ssl_certificate     /etc/nginx/cert/cert.pem;
@@ -83,7 +89,7 @@ server {
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 10m;
 
-    # Отключаем буферизацию — критично для XHTTP
+    # Отключаем буферизацию глобально для этого сервера
     proxy_buffering off;
     proxy_cache off;
     proxy_buffer_size 4k;
@@ -91,15 +97,27 @@ server {
     location $wsPath {
         proxy_pass http://127.0.0.1:$xrayPort;
         proxy_http_version 1.1;
+
+        # Обязательные заголовки для WebSocket upgrade
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
+
+        # Большие таймауты — мобильный может не слать данные долго
+        # (экран выключен, фон, слабый сигнал)
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
         proxy_connect_timeout 10s;
+
+        # Не буферизировать тело запроса — критично для WS
         proxy_request_buffering off;
-        chunked_transfer_encoding on;
+
+        # TCP keepalive на уровне nginx к upstream
+        proxy_socket_keepalive on;
     }
 
     location /sub/ {

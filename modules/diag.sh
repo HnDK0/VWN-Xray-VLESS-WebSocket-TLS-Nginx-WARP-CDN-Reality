@@ -77,7 +77,7 @@ _diagXray() {
     fi
     _pass "$(msg diag_xray_installed): $(xray version 2>/dev/null | head -1 | grep -oP 'Xray \S+')"
 
-    # XHTTP конфиг
+    # WS конфиг
     if [ -f "$configPath" ]; then
         if xray -test -config "$configPath" &>/dev/null; then
             _pass "$(msg diag_xhttp_config_ok)"
@@ -101,7 +101,7 @@ _diagXray() {
             _fail "$(msg diag_port_not_listen): $xray_port"
         fi
     else
-        _skip "XHTTP $(msg diag_not_installed)"
+        _skip "WebSocket $(msg diag_not_installed)"
     fi
 
     # Reality конфиг

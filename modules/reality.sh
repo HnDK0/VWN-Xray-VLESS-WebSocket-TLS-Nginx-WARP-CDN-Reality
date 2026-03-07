@@ -268,7 +268,22 @@ showRealityInfo() {
     echo "ServerName:  $destHost"
     echo "Flow:        xtls-rprx-vision"
     echo "--------------------------------------------------"
-    local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
+    local url flag name encoded_name
+    serverIP=$(_getPublicIP)
+    flag=$(_getCountryFlag "$serverIP")
+    name="${flag} VL-Reality | default ${flag}"
+    encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
+
+    echo "--------------------------------------------------"
+    echo "UUID:        $uuid"
+    echo "IP:          $serverIP"
+    echo "$(msg reality_port): $port"
+    echo "PublicKey:   $pubKey"
+    echo "ShortId:     $shortId"
+    echo "ServerName:  $destHost"
+    echo "Flow:        xtls-rprx-vision"
+    echo "--------------------------------------------------"
+    url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#${encoded_name}"
     echo -e "${green}$url${reset}"
     echo "--------------------------------------------------"
 }
@@ -276,17 +291,21 @@ showRealityInfo() {
 showRealityQR() {
     [ ! -f "$realityConfigPath" ] && { echo "${red}$(msg reality_not_installed)${reset}"; return 1; }
 
-    local uuid port shortId destHost pubKey serverIP
+    local uuid port shortId destHost pubKey serverIP flag name encoded_name
     uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$realityConfigPath")
     port=$(jq -r '.inbounds[0].port' "$realityConfigPath")
     shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath")
     destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath")
     pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
     serverIP=$(_getPublicIP)
+    flag=$(_getCountryFlag "$serverIP")
+    name="${flag} VL-Reality | default ${flag}"
+    encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
 
-    local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
+    local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#${encoded_name}"
     command -v qrencode &>/dev/null || installPackage "qrencode"
-    qrencode -t ANSI "$url"
+    echo -e "${cyan}=== ${name} ===${reset}"
+    qrencode -s 1 -m 1 -t ANSIUTF8 "$url"
     echo -e "\n${green}$url${reset}\n"
 }
 

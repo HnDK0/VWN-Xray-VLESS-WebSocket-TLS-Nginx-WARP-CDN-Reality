@@ -1,7 +1,44 @@
 #!/bin/bash
 # =================================================================
-# xray.sh — Конфиг Xray XHTTP+TLS, изменение параметров, QR-код
+# xray.sh — Конфиг Xray VLESS+WebSocket+TLS, параметры, QR-код
 # =================================================================
+
+# =================================================================
+# Получение флага страны по IP сервера
+# Возвращает emoji флага, например 🇩🇪
+# При ошибке возвращает 🌐
+# =================================================================
+_getCountryFlag() {
+    local ip="$1"
+    local code
+    code=$(curl -s --connect-timeout 5 "http://ip-api.com/line/${ip}?fields=countryCode" 2>/dev/null | tr -d '[:space:]')
+    if [[ "$code" =~ ^[A-Z]{2}$ ]]; then
+        # Конвертируем код страны в emoji флаг через региональные индикаторы
+        # A=0x1F1E6, поэтому каждая буква = 0x1F1E6 + (ord - ord('A'))
+        python3 -c "
+c='${code}'
+flag=''.join(chr(0x1F1E6 + ord(ch) - ord('A')) for ch in c)
+print(flag)
+" 2>/dev/null || echo "🌐"
+    else
+        echo "🌐"
+    fi
+}
+
+# Формирует красивое имя конфига: 🇩🇪 VL-WS-CDN | label 🇩🇪
+# Аргументы: тип (WS|Reality), label, [ip]
+_getConfigName() {
+    local type="$1"
+    local label="$2"
+    local ip="${3:-$(getServerIP)}"
+    local flag
+    flag=$(_getCountryFlag "$ip")
+    case "$type" in
+        WS)       echo "${flag} VL-WS-CDN | ${label} ${flag}" ;;
+        Reality)  echo "${flag} VL-Reality | ${label} ${flag}" ;;
+        *)        echo "${flag} VL-${type} | ${label} ${flag}" ;;
+    esac
+}
 
 installXray() {
     command -v xray &>/dev/null && { echo "info: xray already installed."; return; }
@@ -10,7 +47,7 @@ installXray() {
 
 writeXrayConfig() {
     local xrayPort="$1"
-    local xhttpPath="$2"
+    local wsPath="$2"
     local domain="$3"
     local new_uuid
     new_uuid=$(cat /proc/sys/kernel/random/uuid)
@@ -32,14 +69,16 @@ writeXrayConfig() {
             "decryption": "none"
         },
         "streamSettings": {
-            "network": "xhttp",
-            "xhttpSettings": {
-                "path": "$xhttpPath",
+            "network": "ws",
+            "wsSettings": {
+                "path": "$wsPath",
                 "host": "$domain",
-                "mode": "stream-one",
-                "noSSEHeader": false,
-                "scMaxEachPostBytes": "1000000",
-                "scMinPostsIntervalMs": "30"
+                "heartbeatPeriod": 30
+            },
+            "sockopt": {
+                "tcpKeepAliveIdle": 100,
+                "tcpKeepAliveInterval": 10,
+                "tcpKeepAliveRetry": 3
             }
         },
         "sniffing": {"enabled": false}
@@ -96,17 +135,17 @@ getConfigInfo() {
         return 1
     fi
     xray_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$configPath" 2>/dev/null)
-    xray_path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' "$configPath" 2>/dev/null)
+    # Поддержка и ws и xhttp (обратная совместимость)
+    xray_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path' "$configPath" 2>/dev/null)
     xray_port=$(jq -r '.inbounds[0].port' "$configPath" 2>/dev/null)
-    # Сначала берём domain из xhttpSettings.host (надёжнее чем grep nginx)
-    xray_userDomain=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
+    xray_userDomain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
     if [ -z "$xray_userDomain" ] || [ "$xray_userDomain" = "null" ]; then
         xray_userDomain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null \
             | grep -v 'proxy_ssl' \
             | grep -v 'server_name\s*_;' \
             | awk '{print $2}' | tr -d ';' | grep -v '^_$' | head -1)
     fi
-    [ -z "$xray_userDomain" ] && xray_userDomain=$(_getPublicIP 2>/dev/null || getServerIP)
+    [ -z "$xray_userDomain" ] && xray_userDomain=$(getServerIP)
 
     if [ -z "$xray_uuid" ] || [ "$xray_uuid" = "null" ]; then
         echo "${red}$(msg xray_not_installed)${reset}" >&2
@@ -115,16 +154,23 @@ getConfigInfo() {
 }
 
 getShareUrl() {
+    local label="${1:-default}"
     getConfigInfo || return 1
-    local encoded_path
+    local encoded_path name
     encoded_path=$(python3 -c \
-        "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=''))" \
-        "$xray_path" 2>/dev/null) || encoded_path=$(printf '%s' "$xray_path" | sed 's|/|%2F|g')
-    echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
+        "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe='/'))" \
+        "$xray_path" 2>/dev/null) || encoded_path="$xray_path"
+    name=$(_getConfigName "WS" "$label")
+    # URL-кодируем имя для фрагмента (#)
+    local encoded_name
+    encoded_name=$(python3 -c \
+        "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))" \
+        "$name" 2>/dev/null) || encoded_name="$name"
+    echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&type=ws&host=${xray_userDomain}&path=${encoded_path}#${encoded_name}"
 }
 
 # JSON конфиг для ручного импорта (v2rayNG Custom config, Nekoray и др.)
-_getXhttpJsonConfig() {
+_getWsJsonConfig() {
     local uuid="$1" domain="$2" path="$3"
     cat << JSONEOF
 {
@@ -141,9 +187,17 @@ _getXhttpJsonConfig() {
           "users": [{"id": "${uuid}", "encryption": "none"}]}]
       },
       "streamSettings": {
-        "network": "xhttp", "security": "tls",
-        "tlsSettings": {"serverName": "${domain}", "fingerprint": "chrome", "alpn": ["http/1.1"]},
-        "xhttpSettings": {"path": "${path}", "host": "${domain}", "mode": "stream-one"}
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "${domain}",
+          "fingerprint": "chrome",
+          "alpn": ["http/1.1"]
+        },
+        "wsSettings": {
+          "path": "${path}",
+          "headers": {"Host": "${domain}"}
+        }
       }
     },
     {"tag": "direct", "protocol": "freedom"},
@@ -156,31 +210,32 @@ JSONEOF
 
 getQrCode() {
     command -v qrencode &>/dev/null || installPackage "qrencode"
-    local has_xhttp=false has_reality=false
+    local has_ws=false has_reality=false
 
-    [ -f "$configPath" ] && has_xhttp=true
+    [ -f "$configPath" ] && has_ws=true
     [ -f "$realityConfigPath" ] && has_reality=true
 
-    if ! $has_xhttp && ! $has_reality; then
+    if ! $has_ws && ! $has_reality; then
         echo "${red}$(msg xray_not_installed)${reset}"
         return 1
     fi
 
-    if $has_xhttp; then
+    if $has_ws; then
         getConfigInfo || return 1
-        local url
-        url=$(getShareUrl)
+        local url name
+        name=$(_getConfigName "WS" "default")
+        url=$(getShareUrl "default")
 
         echo -e "${cyan}================================================================${reset}"
-        echo -e "   XHTTP+TLS — форматы подключения"
+        echo -e "   WebSocket+TLS — форматы подключения"
         echo -e "${cyan}================================================================${reset}\n"
 
         echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
-        qrencode -s 1 -t ANSI "$url" 2>/dev/null || true
+        qrencode -s 1 -m 1 -t ANSIUTF8 "$url" 2>/dev/null || true
         echo -e "\n${green}${url}${reset}\n"
 
-        local json outfile="/root/vwn-client-xhttp.json"
-        json=$(_getXhttpJsonConfig "$xray_uuid" "$xray_userDomain" "$xray_path")
+        local json outfile="/root/vwn-client-ws.json"
+        json=$(_getWsJsonConfig "$xray_uuid" "$xray_userDomain" "$xray_path")
         echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
         echo -e "${yellow}${json}${reset}"
         echo "$json" > "$outfile"
@@ -188,7 +243,7 @@ getQrCode() {
         echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
 
         echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
-        echo -e "${yellow}- name: VWN-XHTTP
+        echo -e "${yellow}- name: ${name}
   type: vless
   server: ${xray_userDomain}
   port: 443
@@ -196,17 +251,17 @@ getQrCode() {
   tls: true
   servername: ${xray_userDomain}
   client-fingerprint: chrome
-  network: xhttp
-  xhttp-opts:
+  network: ws
+  ws-opts:
     path: ${xray_path}
-    host: ${xray_userDomain}
-    mode: stream-one${reset}\n"
+    headers:
+      Host: ${xray_userDomain}${reset}\n"
 
         echo -e "${cyan}================================================================${reset}"
     fi
 
     if $has_reality; then
-        echo -e "${cyan}=== Vless Reality ===${reset}"
+        echo -e "\n${cyan}=== Vless Reality ===${reset}"
         showRealityQR
     fi
 }
@@ -266,22 +321,21 @@ modifyXrayPort() {
 
 modifyXhttpPath() {
     local oldPath
-    oldPath=$(jq -r ".inbounds[0].streamSettings.xhttpSettings.path" "$configPath")
-    read -rp "$(msg enter_new_path)" xhttpPath
-    [ -z "$xhttpPath" ] && xhttpPath=$(generateRandomPath)
-    # Убираем спецсимволы опасные для sed/nginx
-    xhttpPath=$(echo "$xhttpPath" | tr -cd 'A-Za-z0-9/_-')
-    [[ ! "$xhttpPath" =~ ^/ ]] && xhttpPath="/$xhttpPath"
+    oldPath=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath")
+    read -rp "$(msg enter_new_path)" wsPath
+    [ -z "$wsPath" ] && wsPath=$(generateRandomPath)
+    wsPath=$(echo "$wsPath" | tr -cd 'A-Za-z0-9/_-')
+    [[ ! "$wsPath" =~ ^/ ]] && wsPath="/$wsPath"
 
     local oldPathEscaped newPathEscaped
     oldPathEscaped=$(printf '%s\n' "$oldPath" | sed 's|[[\.*^$()+?{|]|\\&|g')
-    newPathEscaped=$(printf '%s\n' "$xhttpPath" | sed 's|[[\.*^$()+?{|]|\\&|g')
+    newPathEscaped=$(printf '%s\n' "$wsPath" | sed 's|[[\.*^$()+?{|]|\\&|g')
     sed -i "s|location ${oldPathEscaped}|location ${newPathEscaped}|g" "$nginxPath"
 
-    jq ".inbounds[0].streamSettings.xhttpSettings.path = \"$xhttpPath\"" \
+    jq ".inbounds[0].streamSettings.wsSettings.path = \"$wsPath\"" \
         "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
     systemctl restart xray nginx
-    echo "${green}$(msg new_path): $xhttpPath${reset}"
+    echo "${green}$(msg new_path): $wsPath${reset}"
 }
 
 modifyProxyPassUrl() {
@@ -311,7 +365,7 @@ modifyDomain() {
     fi
     new_domain="$validated"
     sed -i "s/server_name ${xray_userDomain};/server_name ${new_domain};/" "$nginxPath"
-    jq ".inbounds[0].streamSettings.xhttpSettings.host = \"$new_domain\"" \
+    jq ".inbounds[0].streamSettings.wsSettings.host = \"$new_domain\"" \
         "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
     userDomain="$new_domain"
     configCert
