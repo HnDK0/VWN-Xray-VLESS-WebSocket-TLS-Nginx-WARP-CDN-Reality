@@ -101,14 +101,15 @@ buildUserSubFile() {
     fi
 
     if [ -f "$realityConfigPath" ]; then
-        local r_port r_shortId r_destHost r_pubKey r_name r_encoded_name
+        local r_uuid r_port r_shortId r_destHost r_pubKey r_name r_encoded_name
+        r_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$realityConfigPath" 2>/dev/null)
         r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
         r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
         r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
         r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $NF}')
         r_name="${flag} VL-Reality | ${label} ${flag}"
         r_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$r_name" 2>/dev/null || echo "$r_name")
-        lines+="vless://${uuid}@${server_ip}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"$'\n'
+        lines+="vless://${r_uuid}@${server_ip}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"$'\n'
     fi
 
     local filename
@@ -288,7 +289,8 @@ showUserQR() {
 
     # Reality
     if [ -f "$realityConfigPath" ]; then
-        local r_port r_shortId r_destHost r_pubKey r_serverIP r_flag r_name r_encoded_name url_reality
+        local r_uuid r_port r_shortId r_destHost r_pubKey r_serverIP r_flag r_name r_encoded_name url_reality
+        r_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$realityConfigPath" 2>/dev/null)
         r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
         r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
         r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
@@ -297,7 +299,7 @@ showUserQR() {
         r_flag=$(_getCountryFlag "$r_serverIP")
         r_name="${r_flag} VL-Reality | ${label} ${r_flag}"
         r_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$r_name" 2>/dev/null || echo "$r_name")
-        url_reality="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"
+        url_reality="vless://${r_uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"
 
         echo -e "\n${cyan}=== ${r_name} ===${reset}"
         qrencode -s 1 -m 1 -t ANSIUTF8 "$url_reality" 2>/dev/null || true
