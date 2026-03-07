@@ -170,32 +170,36 @@ manageWs() {
     set +e
     while true; do
         clear
-        local s_nginx s_ws s_ssl s_cdn s_domain
+        local s_nginx s_ws s_ssl s_cdn s_domain s_connect
         s_nginx=$(getServiceStatus nginx)
         s_ws=$(getServiceStatus xray)
         s_ssl=$(checkCertExpiry)
         s_cdn=$(getCdnStatus)
         s_domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // "—"' "$configPath" 2>/dev/null)
+        s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
         _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
         echo -e "${cyan}================================================================${reset}"
-        echo -e "   Управление WS + CDN"
+        echo -e "   $(msg menu_wspath)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CDN:  $(_pad "$s_cdn" 14) │  SSL: $s_ssl"
-        echo -e "  Xray:   $(_pad "$s_ws" 16) │  Домен: $s_domain"
+        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CDN:    $(_pad "$s_cdn" 14) │  SSL: $s_ssl"
+        echo -e "  Xray:   $(_pad "$s_ws" 16) │  Домен:  $s_domain"
+        [ -n "$s_connect" ] && \
+        echo -e "  $(printf '%*s' 18 '') │  CDN →  ${green}${s_connect}${reset}"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}1.${reset}  $(msg menu_port)"
         echo -e "  ${green}2.${reset}  $(msg menu_wspath)"
         echo -e "  ${green}3.${reset}  $(msg menu_domain)"
-        echo -e "  ${green}4.${reset}  $(msg menu_ssl)"
-        echo -e "  ${green}5.${reset}  $(msg menu_stub)"
-        echo -e "  ${green}6.${reset}  $(msg menu_cdn)"
-        echo -e "  ${green}7.${reset}  $(msg menu_cf_update_ip)"
-        echo -e "  ${green}8.${reset}  $(msg menu_ssl_cron)"
-        echo -e "  ${green}9.${reset}  $(msg menu_log_cron)"
-        echo -e "  ${green}10.${reset} $(msg menu_uuid)"
+        echo -e "  ${green}4.${reset}  $(msg menu_cdn_host)"
+        echo -e "  ${green}5.${reset}  $(msg menu_ssl)"
+        echo -e "  ${green}6.${reset}  $(msg menu_stub)"
+        echo -e "  ${green}7.${reset}  $(msg menu_cdn)"
+        echo -e "  ${green}8.${reset}  $(msg menu_cf_update_ip)"
+        echo -e "  ${green}9.${reset}  $(msg menu_ssl_cron)"
+        echo -e "  ${green}10.${reset} $(msg menu_log_cron)"
+        echo -e "  ${green}11.${reset} $(msg menu_uuid)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  ${green}11.${reset} $(msg menu_install)"
-        echo -e "  ${green}12.${reset} $(msg menu_remove)"
+        echo -e "  ${green}12.${reset} $(msg menu_install)"
+        echo -e "  ${green}13.${reset} $(msg menu_remove)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}0.${reset}  $(msg back)"
         echo -e "${cyan}================================================================${reset}"
@@ -204,15 +208,16 @@ manageWs() {
             1)  modifyXrayPort ;;
             2)  modifyWsPath ;;
             3)  modifyDomain ;;
-            4)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
-            5)  modifyProxyPassUrl ;;
-            6)  toggleCdnMode ;;
-            7)  setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
-            8)  manageSslCron ;;
-            9)  manageLogClearCron ;;
-            10) modifyXrayUUID ;;
-            11) install ;;
-            12) removeWs ;;
+            4)  modifyConnectHost ;;
+            5)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
+            6)  modifyProxyPassUrl ;;
+            7)  toggleCdnMode ;;
+            8)  setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
+            9)  manageSslCron ;;
+            10) manageLogClearCron ;;
+            11) modifyXrayUUID ;;
+            12) install ;;
+            13) removeWs ;;
             0)  break ;;
         esac
         [ "$choice" = "0" ] && continue

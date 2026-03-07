@@ -16,7 +16,28 @@ _labelByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f2; }
 _tokenByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f3; }
 _genToken()    { head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12; }
 _safeLabel()   { echo "$1" | tr -cd 'A-Za-z0-9_-'; }
-_subFilename() { echo "$(_safeLabel "$1")_${2}.txt"; }
+_subFilename() {
+    local label="$1" token="$2" flag="$3"
+    local safe
+    safe=$(_safeLabel "$label")
+    if [ -n "$flag" ]; then
+        # Имя файла: "🇲🇩 VLESS | label_token.txt"
+        echo "${flag} VLESS | ${safe}_${token}.txt"
+    else
+        echo "${safe}_${token}.txt"
+    fi
+}
+
+# Получает флаг страны (с кэшем в переменной окружения)
+_getCachedFlag() {
+    if [ -z "${_VWN_FLAG_CACHE:-}" ]; then
+        local ip
+        ip=$(getServerIP 2>/dev/null)
+        _VWN_FLAG_CACHE=$(_getCountryFlag "$ip" 2>/dev/null || echo "🌐")
+        export _VWN_FLAG_CACHE
+    fi
+    echo "$_VWN_FLAG_CACHE"
+}
 
 # Домен из wsSettings.host (с fallback на xhttpSettings для обратной совместимости)
 _getDomain() {
@@ -97,12 +118,14 @@ buildUserSubFile() {
     flag=$(_getCountryFlag "$server_ip")
 
     if [ -f "$configPath" ] && [ -n "$domain" ]; then
-        local wp wep name encoded_name
+        local wp wep name encoded_name connect_host
         wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
         wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
+        connect_host=$(getConnectHost 2>/dev/null || echo "$domain")
+        [ -z "$connect_host" ] && connect_host="$domain"
         name="${flag} VL-WS-CDN | ${label} ${flag}"
         encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
-        lines+="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"$'\n'
+        lines+="vless://${uuid}@${connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"$'\n'
     fi
 
     if [ -f "$realityConfigPath" ]; then
@@ -118,7 +141,7 @@ buildUserSubFile() {
     fi
 
     local filename
-    filename=$(_subFilename "$label" "$token")
+    filename=$(_subFilename "$label" "$token" "$flag")
     printf '%s' "$lines" | base64 -w 0 > "${SUB_DIR}/${filename}"
     chmod 644 "${SUB_DIR}/${filename}"
 }
@@ -136,10 +159,14 @@ rebuildAllSubFiles() {
 
 getSubUrl() {
     local label="$1" token="$2"
-    local domain
+    local domain flag
     domain=$(_getDomain)
     [ -z "$domain" ] && { echo ""; return 1; }
-    echo "https://${domain}/sub/$(_subFilename "$label" "$token")"
+    flag=$(_getCachedFlag)
+    local encoded_filename
+    encoded_filename=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" \
+        "$(_subFilename "$label" "$token" "$flag")" 2>/dev/null)
+    echo "https://${domain}/sub/${encoded_filename}"
 }
 
 # ── Список ────────────────────────────────────────────────────────
@@ -194,7 +221,7 @@ deleteUser() {
     echo -e "${red}$(msg users_del_confirm) '$label'? $(msg yes_no)${reset}"
     read -r confirm
     [[ "$confirm" != "y" ]] && { echo "$(msg cancel)"; return 0; }
-    rm -f "${SUB_DIR}/$(_subFilename "$label" "$token")"
+    rm -f "${SUB_DIR}/$(_subFilename "$label" "$token" "$(_getCachedFlag)")"
     sed -i "${num}d" "$USERS_FILE"
     _applyUsersToConfigs
     echo "${green}$(msg removed): $label${reset}"
@@ -217,7 +244,7 @@ renameUser() {
     read -rp "$(msg users_new_label) [$old_label]: " new_label
     [ -z "$new_label" ] && return
     new_label=$(echo "$new_label" | tr -d '|')
-    rm -f "${SUB_DIR}/$(_subFilename "$old_label" "$token")"
+    rm -f "${SUB_DIR}/$(_subFilename "$old_label" "$token" "$(_getCachedFlag)")"
     sed -i "${num}s/.*/${uuid}|${new_label}|${token}/" "$USERS_FILE"
     _applyUsersToConfigs
     buildUserSubFile "$uuid" "$new_label" "$token" 2>/dev/null || true
@@ -249,14 +276,16 @@ showUserQR() {
 
     # WebSocket
     if [ -f "$configPath" ] && [ -n "$domain" ]; then
-        local wp wep url_ws server_ip flag name encoded_name
+        local wp wep url_ws server_ip flag name encoded_name connect_host
         wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
         wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
         server_ip=$(getServerIP)
         flag=$(_getCountryFlag "$server_ip")
+        connect_host=$(getConnectHost 2>/dev/null || echo "$domain")
+        [ -z "$connect_host" ] && connect_host="$domain"
         name="${flag} VL-WS-CDN | ${label} ${flag}"
         encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
-        url_ws="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"
+        url_ws="vless://${uuid}@${connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"
 
         echo -e "${cyan}================================================================${reset}"
         echo -e "   ${name}"
@@ -269,7 +298,7 @@ showUserQR() {
         echo -e "${cyan}[ 2. Clash Meta / Mihomo ]${reset}"
         echo -e "${yellow}- name: ${name}
   type: vless
-  server: ${domain}
+  server: ${connect_host}
   port: 443
   uuid: ${uuid}
   tls: true

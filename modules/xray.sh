@@ -386,6 +386,46 @@ modifyDomain() {
     systemctl restart nginx xray
 }
 
+CONNECT_HOST_FILE="/usr/local/etc/xray/connect_host"
+
+getConnectHost() {
+    local h
+    h=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$h" ]; then
+        echo "$h"
+    else
+        # Fallback на основной домен
+        jq -r '.inbounds[0].streamSettings.wsSettings.host // ""' "$configPath" 2>/dev/null
+    fi
+}
+
+modifyConnectHost() {
+    local current
+    current=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$current" ]; then
+        echo "Текущий адрес подключения: ${green}${current}${reset}"
+    else
+        getConfigInfo || return 1
+        echo "Текущий адрес подключения: ${green}${xray_userDomain}${reset} (основной домен)"
+    fi
+    echo ""
+    echo "Введите CDN домен для подключения (Enter = сбросить на основной домен):"
+    read -rp "> " new_host
+    if [ -z "$new_host" ]; then
+        rm -f "$CONNECT_HOST_FILE"
+        echo "${green}Адрес подключения сброшен на основной домен${reset}"
+    else
+        local validated
+        if ! validated=$(_validateDomain "$new_host"); then
+            echo "${red}$(msg invalid): '$new_host'${reset}"; return 1
+        fi
+        echo "$validated" > "$CONNECT_HOST_FILE"
+        echo "${green}Адрес подключения: $validated${reset}"
+    fi
+    # Пересоздаём подписки с новым адресом
+    rebuildAllSubFiles 2>/dev/null || true
+}
+
 updateXrayCore() {
     bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
     systemctl restart xray xray-reality 2>/dev/null || true
