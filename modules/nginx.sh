@@ -143,11 +143,14 @@ server {
 
     # gRPC — активен только при listen 443 ssl http2
     location /${grpcService}/Tun {
+        if (\$content_type !~ "^application/grpc") { return 404; }
+        client_body_timeout 1w;
         grpc_pass grpc://127.0.0.1:${grpcPort};
         grpc_set_header Host \$host;
         grpc_set_header X-Real-IP \$remote_addr;
-        grpc_read_timeout 3600s;
-        grpc_send_timeout 3600s;
+        grpc_set_header TE trailers;
+        grpc_read_timeout 1w;
+        grpc_send_timeout 1w;
         grpc_connect_timeout 10s;
         client_max_body_size 0;
     }

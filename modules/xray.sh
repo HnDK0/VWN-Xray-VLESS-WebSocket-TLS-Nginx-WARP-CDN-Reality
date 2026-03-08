@@ -498,7 +498,7 @@ writeGrpcConfig() {
                 "idle_timeout": 60,
                 "health_check_timeout": 20,
                 "permit_without_stream": false,
-                "initial_windows_size": 0
+                "initial_windows_size": 65536
             },
             "sockopt": {
                 "tcpKeepAliveIdle": 100,
